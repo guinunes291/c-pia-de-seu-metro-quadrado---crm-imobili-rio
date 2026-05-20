@@ -1,5 +1,25 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import * as db from "./db";
+import { getDb } from "./db";
+import { leads } from "../drizzle/schema";
+import { inArray } from "drizzle-orm";
+
+// Telefones usados nos testes — limpar antes e depois para evitar duplicados
+const TELEFONES_TESTE = ['11888888888', '11777777777'];
+
+beforeAll(async () => {
+  const dbConn = await getDb();
+  if (dbConn) {
+    await dbConn.delete(leads).where(inArray(leads.telefone, TELEFONES_TESTE));
+  }
+});
+
+afterAll(async () => {
+  const dbConn = await getDb();
+  if (dbConn) {
+    await dbConn.delete(leads).where(inArray(leads.telefone, TELEFONES_TESTE));
+  }
+});
 
 describe("Sistema de Fila/Roleta de Distribuição", () => {
   describe("Funções de Fila", () => {

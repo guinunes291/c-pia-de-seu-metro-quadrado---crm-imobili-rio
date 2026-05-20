@@ -1,103 +1,100 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import * as db from './db';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { getDb } from './db';
 import { users, leads } from '../drizzle/schema';
 import { eq } from 'drizzle-orm';
 
 describe('Transferência de Leads', () => {
-  let gestorId: number;
   let corretor1Id: number;
   let corretor2Id: number;
   let leadId: number;
 
   beforeAll(async () => {
-    const dbInstance = db.getDb();
-    // Buscar gestor existente
-    const gestor = await dbInstance.select().from(users).where(eq(users.role, 'gestor')).limit(1);
-    if (gestor.length === 0) throw new Error('Gestor não encontrado');
-    gestorId = gestor[0].id;
+    const db = await getDb();
+    if (!db) throw new Error('Database não disponível');
 
-    // Buscar dois corretores existentes
-    const corretores = await dbInstance.select().from(users).where(eq(users.role, 'corretor')).limit(2);
-    if (corretores.length < 2) throw new Error('Pelo menos 2 corretores necessários');
-    corretor1Id = corretores[0].id;
-    corretor2Id = corretores[1].id;
+    const ts = Date.now();
+    const c1Result = await db.insert(users).values({
+      openId: `test-corretor1-trans-${ts}`,
+      name: 'Corretor 1 Transferência',
+      email: `corretor1.trans.${ts}@test.com`,
+      role: 'corretor',
+      status: 'presente',
+    });
+    corretor1Id = (c1Result as any)[0].insertId;
 
-    // Buscar um lead do corretor1
-    const leadsCorretor1 = await dbInstance.select().from(leads).where(eq(leads.userId, corretor1Id)).limit(1);
-    if (leadsCorretor1.length === 0) throw new Error('Lead não encontrado para corretor1');
-    leadId = leadsCorretor1[0].id;
+    const c2Result = await db.insert(users).values({
+      openId: `test-corretor2-trans-${ts}`,
+      name: 'Corretor 2 Transferência',
+      email: `corretor2.trans.${ts}@test.com`,
+      role: 'corretor',
+      status: 'presente',
+    });
+    corretor2Id = (c2Result as any)[0].insertId;
+
+    const [novoLead] = await db.insert(leads).values({
+      nome: 'Lead Teste Transferência',
+      telefone: '(11) 98888-1234',
+      email: `lead.trans.${ts}@test.com`,
+      origem: 'captacao_corretor',
+      status: 'em_atendimento',
+      corretorId: corretor1Id,
+    }).$returningId();
+    leadId = novoLead.id;
+  });
+
+  afterAll(async () => {
+    const db = await getDb();
+    if (!db) return;
+    await db.delete(leads).where(eq(leads.id, leadId));
+    await db.delete(users).where(eq(users.id, corretor1Id));
+    await db.delete(users).where(eq(users.id, corretor2Id));
   });
 
   it('deve transferir lead de um corretor para outro', async () => {
-    const dbInstance = db.getDb();
-    // Verificar lead antes da transferência
-    const leadAntes = await dbInstance.select().from(leads).where(eq(leads.id, leadId)).limit(1);
-    expect(leadAntes[0].userId).toBe(corretor1Id);
+    const db = await getDb();
+    if (!db) throw new Error('Database não disponível');
 
-    // Transferir lead
-    await dbInstance.update(leads)
-      .set({ userId: corretor2Id })
-      .where(eq(leads.id, leadId));
+    const [leadAntes] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+    expect(leadAntes.corretorId).toBe(corretor1Id);
 
-    // Verificar lead depois da transferência
-    const leadDepois = await dbInstance.select().from(leads).where(eq(leads.id, leadId)).limit(1);
-    expect(leadDepois[0].userId).toBe(corretor2Id);
+    await db.update(leads).set({ corretorId: corretor2Id }).where(eq(leads.id, leadId));
 
-    // Reverter transferência (cleanup)
-    await dbInstance.update(leads)
-      .set({ userId: corretor1Id })
-      .where(eq(leads.id, leadId));
+    const [leadDepois] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+    expect(leadDepois.corretorId).toBe(corretor2Id);
+
+    await db.update(leads).set({ corretorId: corretor1Id }).where(eq(leads.id, leadId));
   });
 
   it('deve preservar dados do lead após transferência', async () => {
-    const dbInstance = db.getDb();
-    // Buscar dados do lead antes
-    const leadAntes = await dbInstance.select().from(leads).where(eq(leads.id, leadId)).limit(1);
-    const nomeAntes = leadAntes[0].nome;
-    const telefoneAntes = leadAntes[0].telefone;
-    const emailAntes = leadAntes[0].email;
+    const db = await getDb();
+    if (!db) throw new Error('Database não disponível');
 
-    // Transferir lead
-    await dbInstance.update(leads)
-      .set({ userId: corretor2Id })
-      .where(eq(leads.id, leadId));
+    const [leadAntes] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
 
-    // Verificar dados preservados
-    const leadDepois = await dbInstance.select().from(leads).where(eq(leads.id, leadId)).limit(1);
-    expect(leadDepois[0].nome).toBe(nomeAntes);
-    expect(leadDepois[0].telefone).toBe(telefoneAntes);
-    expect(leadDepois[0].email).toBe(emailAntes);
+    await db.update(leads).set({ corretorId: corretor2Id }).where(eq(leads.id, leadId));
 
-    // Reverter transferência (cleanup)
-    await dbInstance.update(leads)
-      .set({ userId: corretor1Id })
-      .where(eq(leads.id, leadId));
+    const [leadDepois] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+    expect(leadDepois.nome).toBe(leadAntes.nome);
+    expect(leadDepois.telefone).toBe(leadAntes.telefone);
+    expect(leadDepois.email).toBe(leadAntes.email);
+
+    await db.update(leads).set({ corretorId: corretor1Id }).where(eq(leads.id, leadId));
   });
 
   it('deve contar corretamente leads por corretor após transferência', async () => {
-    const dbInstance = db.getDb();
-    // Contar leads antes
-    const leadsCorretor1Antes = await dbInstance.select().from(leads).where(eq(leads.userId, corretor1Id));
-    const leadsCorretor2Antes = await dbInstance.select().from(leads).where(eq(leads.userId, corretor2Id));
-    
-    const countCorretor1Antes = leadsCorretor1Antes.length;
-    const countCorretor2Antes = leadsCorretor2Antes.length;
+    const db = await getDb();
+    if (!db) throw new Error('Database não disponível');
 
-    // Transferir lead
-    await dbInstance.update(leads)
-      .set({ userId: corretor2Id })
-      .where(eq(leads.id, leadId));
+    const leadsC1Antes = await db.select().from(leads).where(eq(leads.corretorId, corretor1Id));
+    const leadsC2Antes = await db.select().from(leads).where(eq(leads.corretorId, corretor2Id));
 
-    // Contar leads depois
-    const leadsCorretor1Depois = await dbInstance.select().from(leads).where(eq(leads.userId, corretor1Id));
-    const leadsCorretor2Depois = await dbInstance.select().from(leads).where(eq(leads.userId, corretor2Id));
+    await db.update(leads).set({ corretorId: corretor2Id }).where(eq(leads.id, leadId));
 
-    expect(leadsCorretor1Depois.length).toBe(countCorretor1Antes - 1);
-    expect(leadsCorretor2Depois.length).toBe(countCorretor2Antes + 1);
+    const leadsC1Depois = await db.select().from(leads).where(eq(leads.corretorId, corretor1Id));
+    const leadsC2Depois = await db.select().from(leads).where(eq(leads.corretorId, corretor2Id));
+    expect(leadsC1Depois.length).toBe(leadsC1Antes.length - 1);
+    expect(leadsC2Depois.length).toBe(leadsC2Antes.length + 1);
 
-    // Reverter transferência (cleanup)
-    await dbInstance.update(leads)
-      .set({ userId: corretor1Id })
-      .where(eq(leads.id, leadId));
+    await db.update(leads).set({ corretorId: corretor1Id }).where(eq(leads.id, leadId));
   });
 });

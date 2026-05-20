@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Bot, Sparkles, Loader2, Search, ChevronRight, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Link } from 'wouter';
+import DashboardLayout from "@/components/DashboardLayout";
 
 const EXEMPLOS = [
   'Zona Oeste próximo à estação, 2 dormitórios, até R$350 mil sem vaga',
@@ -45,6 +46,8 @@ export default function BuscadorProjetos() {
   const resultado = buscarMutation.data;
 
   return (
+    <DashboardLayout>
+
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
@@ -226,5 +229,7 @@ export default function BuscadorProjetos() {
         </div>
       )}
     </div>
-  );
+  
+    </DashboardLayout>
+    );
 }

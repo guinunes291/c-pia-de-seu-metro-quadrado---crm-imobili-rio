@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, CheckCircle2, RefreshCw, Trash2, AlertTriangle } from "lucide-react";
+import DashboardLayout from "@/components/DashboardLayout";
 
 export default function LimparProjetosOrfaos() {
   const [executando, setExecutando] = useState(false);
@@ -52,6 +53,8 @@ export default function LimparProjetosOrfaos() {
   }
 
   return (
+    <DashboardLayout>
+
     <div className="container mx-auto py-8 space-y-6">
       <div>
         <h1 className="text-3xl font-bold mb-2">Limpeza de Projetos Órfãos</h1>
@@ -255,5 +258,7 @@ export default function LimparProjetosOrfaos() {
         </Card>
       )}
     </div>
-  );
+  
+    </DashboardLayout>
+    );
 }

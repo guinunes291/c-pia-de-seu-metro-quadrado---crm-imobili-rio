@@ -66,6 +66,7 @@ import ScriptsVendas from "@/pages/ScriptsVendas";
 import CentralAlertas from "@/pages/CentralAlertas";
 import BuscadorProjetos from "@/pages/BuscadorProjetos";
 import GerenciarTabeloes from "@/pages/GerenciarTabeloes";
+import GerenciarFAQ from "@/pages/GerenciarFAQ";
 import MeuDashboard from "@/pages/meu-negocio/MeuDashboard";
 import MeuFollowUp from "@/pages/meu-negocio/MeuFollowUp";
 import PreAnaliseMcmv from "@/pages/meu-negocio/PreAnaliseMcmv";
@@ -128,7 +129,6 @@ function Router() {
       <Route path="/configuracao-webhooks" component={ConfiguracaoWebhooks} />
       <Route path="/controle-limites" component={ControleLimites} />
       <Route path="/projeto-foco" component={ProjetoFoco} />
-      <Route path="/configuracoes" component={Configuracoes} />
       <Route path="/sistema/log-transferencias" component={LogTransferencias} />
       <Route path="/log-transferencias" component={LogTransferencias} />
       <Route path="/gestao-equipes" component={GestaoEquipes} />
@@ -138,6 +138,7 @@ function Router() {
       <Route path="/central-alertas" component={CentralAlertas} />
       <Route path="/buscador-projetos" component={BuscadorProjetos} />
       <Route path="/gerenciar-tabeloes" component={GerenciarTabeloes} />
+      <Route path="/gerenciar-faq" component={GerenciarFAQ} />
       {/* Módulo Meu Negócio */}
       <Route path="/meu-negocio/dashboard" component={MeuDashboard} />
       <Route path="/meu-negocio/followup" component={MeuFollowUp} />

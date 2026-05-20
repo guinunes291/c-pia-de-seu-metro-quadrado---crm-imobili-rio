@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, FileText, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import DashboardLayout from "@/components/DashboardLayout";
 
 
 export default function ImportarCSV() {
@@ -78,6 +79,8 @@ export default function ImportarCSV() {
   };
 
   return (
+    <DashboardLayout>
+
     <div className="container py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Importar Leads via CSV</h1>
@@ -406,5 +409,7 @@ export default function ImportarCSV() {
         </Card>
       )}
     </div>
-  );
+  
+    </DashboardLayout>
+    );
 }

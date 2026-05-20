@@ -164,6 +164,7 @@ const menuGroups = [
       { icon: Trash, label: "Limpar Projetos Órfãos", path: "/limpar-projetos", roles: ["admin"] },
       { icon: Settings, label: "Configurações", path: "/configuracoes" },
       { icon: FileText, label: "Log de Transferências", path: "/log-transferencias", roles: ["admin"] },
+      { icon: MessageCircle, label: "FAQ do Chatbot", path: "/gerenciar-faq", roles: ["gestor", "admin", "superintendente"] },
     ],
   },
 ];
@@ -266,6 +267,7 @@ const menuGroupsGestor = [
       { icon: FileText, label: "Tabelões", path: "/gerenciar-tabeloes" },
       { icon: UserCheck, label: "Aprovar Projetos", path: "/aprovar-projetos" },
       { icon: Settings, label: "Configurações", path: "/configuracoes" },
+      { icon: MessageCircle, label: "FAQ do Chatbot", path: "/gerenciar-faq" },
     ],
   },
 ];
@@ -334,6 +336,7 @@ const menuGroupsAdmin = [
       { icon: Settings, label: "Templates Comissão", path: "/templates-comissao" },
       { icon: Trash2, label: "Lixeira", path: "/lixeira" },
       { icon: Settings, label: "Configurações", path: "/configuracoes" },
+      { icon: MessageCircle, label: "FAQ do Chatbot", path: "/gerenciar-faq" },
     ],
   },
 ];

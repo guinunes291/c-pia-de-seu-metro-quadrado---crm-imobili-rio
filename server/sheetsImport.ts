@@ -160,7 +160,7 @@ export async function findExistingProject(origem: string): Promise<number | null
     });
 
     // Retornar o ID do projeto recém-criado
-    const projectId = Number(newProject.insertId);
+    const projectId = Number((newProject as any)[0]?.insertId ?? (newProject as any).insertId);
     console.log(`[findExistingProject] Projeto criado com ID: ${projectId}`);
     
     return projectId;

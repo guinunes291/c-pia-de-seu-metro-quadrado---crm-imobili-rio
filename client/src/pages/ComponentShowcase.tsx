@@ -172,6 +172,7 @@ import {
 import { useState } from "react";
 import { toast as sonnerToast } from "sonner";
 import { AIChatBox, type Message } from "@/components/AIChatBox";
+import DashboardLayout from "@/components/DashboardLayout";
 
 export default function ComponentsShowcase() {
   const { theme, toggleTheme } = useTheme();
@@ -227,6 +228,8 @@ export default function ComponentsShowcase() {
   };
 
   return (
+    <DashboardLayout>
+
     <div className="min-h-screen bg-background text-foreground">
       <main className="container max-w-6xl mx-auto">
         <div className="space-y-2 justify-between flex">
@@ -1433,5 +1436,7 @@ export default function ComponentsShowcase() {
         </div>
       </footer>
     </div>
-  );
+  
+    </DashboardLayout>
+    );
 }

@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Star } from 'lucide-react';
+import DashboardLayout from "@/components/DashboardLayout";
 
 export default function TemplatesComissao() {
   const utils = trpc.useUtils();
@@ -127,6 +128,8 @@ export default function TemplatesComissao() {
   };
 
   return (
+    <DashboardLayout>
+
     <div className="container mx-auto py-8">
       <div className="flex justify-between items-center mb-6">
         <div>
@@ -351,5 +354,7 @@ export default function TemplatesComissao() {
         </CardContent>
       </Card>
     </div>
-  );
+  
+    </DashboardLayout>
+    );
 }

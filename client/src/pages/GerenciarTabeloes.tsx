@@ -11,6 +11,7 @@ import {
   Plus, FolderOpen, ArrowRight, Info,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import DashboardLayout from "@/components/DashboardLayout";
 
 const MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -513,6 +514,8 @@ export default function GerenciarTabeloes() {
             const count = tabeloesQuery.data!.filter((t: any) => t.tabelao.statusProcessamento === status).length;
             const st = getStatusInfo(status);
             return (
+              <DashboardLayout>
+
               <Card key={status} className={`border ${st.color}`}>
                 <CardContent className="pt-3 pb-3 text-center">
                   <div className={`flex justify-center mb-1 ${st.color.split(' ')[0]}`}>{st.icon}</div>
@@ -520,7 +523,9 @@ export default function GerenciarTabeloes() {
                   <p className="text-xs">{st.label}</p>
                 </CardContent>
               </Card>
-            );
+            
+              </DashboardLayout>
+              );
           })}
         </div>
       )}

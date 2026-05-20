@@ -3,6 +3,7 @@ import * as db from "./db";
 import { getDb } from "./db";
 import { users, leads } from "../drizzle/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
+import { inicioDoDiaHoje } from "./timezone";
 
 describe("Controle de Limites Diários", () => {
   let testUserId: number;
@@ -70,8 +71,8 @@ describe("Controle de Limites Diários", () => {
     const database = await getDb();
     if (!database) throw new Error("Database not available");
 
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
+    // Usar inicioDoDiaHoje() para timezone SP correto
+    const hoje = inicioDoDiaHoje();
 
     // Criar 3 leads para hoje
     await database.insert(leads).values([
@@ -109,11 +110,11 @@ describe("Controle de Limites Diários", () => {
     const database = await getDb();
     if (!database) throw new Error("Database not available");
 
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
+    // Usar inicioDoDiaHoje() para timezone SP correto
+    const hoje = inicioDoDiaHoje();
 
-    const ontem = new Date(hoje);
-    ontem.setDate(ontem.getDate() - 1);
+    // Calcular ontem: subtrair 24h do início do dia de hoje
+    const ontem = new Date(hoje.getTime() - 24 * 60 * 60 * 1000);
 
     // Criar 2 leads para ontem
     await database.insert(leads).values([
@@ -150,8 +151,7 @@ describe("Controle de Limites Diários", () => {
   });
 
   it("deve retornar 0 quando corretor não tem leads hoje", async () => {
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
+    const hoje = inicioDoDiaHoje();
 
     const count = await db.countLeadsRecebidosHoje(testUserId, hoje);
     expect(count).toBe(0);
@@ -176,8 +176,7 @@ describe("Controle de Limites Diários", () => {
       });
     }
 
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
+    const hoje = inicioDoDiaHoje();
 
     const count = await db.countLeadsRecebidosHoje(testUserId, hoje);
     const [corretor] = await database

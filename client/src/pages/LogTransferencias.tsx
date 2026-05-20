@@ -11,6 +11,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
+import DashboardLayout from "@/components/DashboardLayout";
 
 export default function LogTransferencias() {
   const [dataInicio, setDataInicio] = useState("");
@@ -117,6 +118,8 @@ export default function LogTransferencias() {
   };
 
   return (
+    <DashboardLayout>
+
     <div className="container mx-auto py-8 space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Log de Transferências Automáticas</h1>
@@ -341,5 +344,7 @@ export default function LogTransferencias() {
         </CardContent>
       </Card>
     </div>
-  );
+  
+    </DashboardLayout>
+    );
 }

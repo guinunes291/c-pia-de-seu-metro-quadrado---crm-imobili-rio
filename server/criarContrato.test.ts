@@ -13,16 +13,21 @@ describe('Criar Contrato', () => {
     const database = await getDb();
     if (!database) throw new Error('Database not available');
 
-    // Buscar uma equipe existente
-    const [equipe] = await database.select()
-      .from(equipes)
-      .limit(1);
-    
-    if (!equipe) {
-      throw new Error('Nenhuma equipe encontrada no banco de dados');
-    }
-    
-    testEquipeId = equipe.id;
+    // Criar gestor de teste para a equipe
+    const gestorResult = await database.insert(users).values({
+      openId: 'test-gestor-contrato',
+      name: 'Gestor Teste Contrato',
+      email: 'gestor.contrato@test.com',
+      role: 'gestor',
+    });
+    const testGestorId = (gestorResult as any)[0].insertId;
+
+    // Criar equipe de teste
+    const equipeResult = await database.insert(equipes).values({
+      nome: 'Equipe Teste Contrato',
+      gestorId: testGestorId,
+    });
+    testEquipeId = (equipeResult as any)[0].insertId;
 
     // Criar corretor de teste
     await database.insert(users).values({
@@ -73,7 +78,9 @@ describe('Criar Contrato', () => {
     await database.delete(contratos).where(eq(contratos.corretorId, testCorretorId));
     await database.delete(leads).where(eq(leads.corretorId, testCorretorId));
     await database.delete(users).where(eq(users.id, testCorretorId));
-    // Não deletar equipe pois usamos uma existente
+    // Limpar equipe e gestor de teste
+    if (testEquipeId) await database.delete(equipes).where(eq(equipes.id, testEquipeId));
+    await database.delete(users).where(eq(users.email, 'gestor.contrato@test.com'));
   });
 
   it('deve criar um novo contrato com lead novo', async () => {
@@ -85,6 +92,7 @@ describe('Criar Contrato', () => {
       projectId: testProjectId,
       projetoCustom: '',
       valorVenda: 500000,
+      percentualComissao: 2.65,
       dataVenda: new Date('2026-02-21'),
       observacoes: 'Contrato de teste',
     });
@@ -135,6 +143,7 @@ describe('Criar Contrato', () => {
       projectId: testProjectId,
       projetoCustom: '',
       valorVenda: 750000,
+      percentualComissao: 2.65,
       dataVenda: new Date('2026-02-21'),
       observacoes: 'Contrato com lead existente',
     });
@@ -160,6 +169,7 @@ describe('Criar Contrato', () => {
       projectId: null,
       projetoCustom: 'Projeto Customizado Teste',
       valorVenda: 600000,
+      percentualComissao: 2.65,
       dataVenda: new Date('2026-02-21'),
       observacoes: 'Contrato com projeto customizado',
     });
@@ -192,6 +202,7 @@ describe('Criar Contrato', () => {
       projectId: testProjectId,
       projetoCustom: '',
       valorVenda: 500000,
+      percentualComissao: 2.65,
       dataVenda: new Date('2026-02-21'),
     });
     
@@ -213,6 +224,7 @@ describe('Criar Contrato', () => {
       projectId: testProjectId,
       projetoCustom: '',
       valorVenda: 800000,
+      percentualComissao: 2.65,
       dataVenda: new Date('2026-02-21'),
       observacoes: 'Contrato com anexos',
       anexos: anexosUrls,

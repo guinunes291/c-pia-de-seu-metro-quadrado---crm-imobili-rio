@@ -1,0 +1,43 @@
+{
+  "build_command": "pnpm run build",
+  "capabilities": [
+    "server",
+    "db",
+    "user"
+  ],
+  "dev_command": "pnpm run dev",
+  "env_vars": {
+    "DATABASE_URL": "mysql://2jGgPCERyrvb2fZ.ad8a87b2c057:jcX6Oq721tdlvxh3b3Yn@gateway02.us-east-1.prod.aws.tidbcloud.com:4000/KioE9a9tzwqrRivzMGNay6?ssl={\"rejectUnauthorized\":true}"
+  },
+  "experiments": [
+    "no_db_push"
+  ],
+  "git_remote": {
+    "repo_url": "s3://vida-prod-gitrepo/webdev-git/310419663032188321/KioE9a9tzwqrRivzMGNay6",
+    "access_key_id": "ASIAZV3A2ECZBWXEVLIQ",
+    "secret_access_key": "BMNPW27A1YP8ST2PgP8d3XXlYO8AcnGYjXS5kg64",
+    "session_token": "IQoJb3JpZ2luX2VjEBsaCXVzLWVhc3QtMSJHMEUCID3YhK/Im95+kgRuhkk0c/kvT/bpbRAVB4V+G6kLlYyZAiEA8nYG75ILpQYfJiQDlPuZqHVTJuxFR5fjNLlQFLWFeSEq/gMI4///////////ARAEGgw2NjUzODYwOTg4NjYiDNgzeubFLYPXhlcBECrSA74tddgfPoGi/V0P4yn/1vWzVPSvVWde/+Pe+Io+rULbDDk/xeF09ERTwusYA4uaeNAoHpqS+eZj4E7H8TTpUAZahkgE3cHyWtmG7Z5wMGgP19+0TPgpje8lt8r2Vcf3RFVXctBFtNvjCzpRMOBumhKtpB3oMuW1EFoeKXh5ec7KRLGvn0NlTRlgK7yRr/0x0BZsySWQdUXqf38vWDqhBAkffi8+/xQl2i59paggW7r0JTnPUDasVC7wQMDZIodHB0/f0lKWIG5vQXhAHK6/X0JzVtHsxukpcuUFoOve7zNzOML5hf5Uiht2Sf1zJK3fQyg1PCt7Po95VQBuXFvzrtkkP3Sor4SMZrV0NTEfFfdlV+ml407HiajycbviPyr5BUa1V6B7ZeMo8DzxHD7QRZfK/x/Zlcm6LkK9NK5QoNLpBJXwrhtfwiIQqo8Jd4xVdRGkP6YZIt8CfTDHOHtAWvlO0pvSGF4rOZQabCv1tImcHR2gao0ciBrvvQnA9601ZInhNfIOFPgR1isOKj3WcsxqOtOsVXDqWs9sEmuw6PicigTPyMTG27tDd+xLCzf7PAoNGVvcXeAw6UStXYL9R9FsZm6EhWzBm0dJn4Tk0fA2XKYwg7C00AY6nQEjilEtnbNrH+qbNYD1EI6xiIODOOVYqRynOLdVv5PQ/emXARujxcmCWfW0ST7EAYkEk25FCeIVpVOeYiEvHY1xyuFMUqw0b2QMw5My/fu3VAP6UlBfM1fz7v3Kb8S7Gf5hXM8DsgIscgicfKgCDqn7J+3/FE6LOvv6OM05Gdr8/PaQnDtjzTx9ZAfMjp4NdZY6Csgl/4aqhQJFHZaa",
+    "expiration": "2026-05-20T14:10:11.000Z"
+  },
+  "name": "cópia-de-seu-metro-quadrado---crm-imobiliário",
+  "path": "/home/ubuntu/cópia-de-seu-metro-quadrado---crm-imobiliário",
+  "port": 3000,
+  "secrets": {
+    "BUILT_IN_FORGE_API_KEY": "K8uPTGSBTKwAJt49Ji5mYU",
+    "BUILT_IN_FORGE_API_URL": "https://forge.manus.ai",
+    "JWT_SECRET": "AwpttLvA9CkTNYkktcBXWn",
+    "OAUTH_SERVER_URL": "https://api.manus.im",
+    "OWNER_NAME": "Guilherme Nunes",
+    "OWNER_OPEN_ID": "DybDjnCH55vYtfGH57YUXB",
+    "VITE_ANALYTICS_ENDPOINT": "https://manus-analytics.com",
+    "VITE_ANALYTICS_WEBSITE_ID": "4be374a9-20f2-4b3c-8341-99f3e27b142c",
+    "VITE_APP_ID": "KioE9a9tzwqrRivzMGNay6",
+    "VITE_APP_LOGO": "",
+    "VITE_APP_TITLE": "Cópia de Seu Metro Quadrado - CRM Imobiliário",
+    "VITE_FRONTEND_FORGE_API_KEY": "ChrH4vXvQ8pfkZkVAwy75H",
+    "VITE_FRONTEND_FORGE_API_URL": "https://forge.manus.ai",
+    "VITE_OAUTH_PORTAL_URL": "https://manus.im"
+  },
+  "template_id": "web-db-user",
+  "test_command": "pnpm test"
+}

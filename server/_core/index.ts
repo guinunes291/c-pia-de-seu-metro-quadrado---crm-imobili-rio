@@ -232,3 +232,22 @@ async function startServer() {
 }
 
 startServer().catch(console.error);
+
+// Graceful shutdown: cancela todos os timers registrados e encerra o processo
+const _activeTimers: ReturnType<typeof setInterval>[] = [];
+const _origSetInterval = global.setInterval.bind(global);
+(global as any).setInterval = function(fn: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) {
+  const id = _origSetInterval(fn as TimerHandler, delay, ...args);
+  _activeTimers.push(id as unknown as ReturnType<typeof setInterval>);
+  return id;
+};
+
+function _gracefulShutdown(signal: string) {
+  console.log(`[Server] Recebido ${signal} — encerrando graciosamente...`);
+  _activeTimers.forEach(t => clearInterval(t));
+  console.log(`[Server] ${_activeTimers.length} timer(s) cancelado(s).`);
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => _gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => _gracefulShutdown('SIGINT'));

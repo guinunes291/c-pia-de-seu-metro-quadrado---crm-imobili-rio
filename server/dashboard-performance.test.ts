@@ -85,6 +85,8 @@ describe("metasGlobais", () => {
     // Update
     const updated = await caller.metasGlobais.update({
       id: meta!.id,
+      mes: 2,
+      ano: 2026,
       metaVGV: "100000000",
       metaContratos: 20,
     });

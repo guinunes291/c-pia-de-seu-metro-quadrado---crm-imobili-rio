@@ -8,7 +8,21 @@ import App from "./App";
 import { getLoginUrl } from "./const";
 import "./index.css";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Dados "frescos" por 30 segundos por padrão — evita refetches excessivos
+      // em navegação entre páginas e ao montar componentes em paralelo (N+1 de cards).
+      // Páginas de tempo real (leads, notificações) devem sobrescrever com staleTime menor.
+      staleTime: 30_000,
+      // Manter dados em cache por 5 minutos após o componente desmontar
+      gcTime: 5 * 60_000,
+      // Não refetch ao focar a janela para reduzir carga em dados estáticos
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;

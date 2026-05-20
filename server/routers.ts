@@ -377,18 +377,15 @@ export const appRouter = router({
       const { getCorretoresIdsParaFiltro } = await import('./equipes');
       const corretoresIds = await getCorretoresIdsParaFiltro(ctx.user.id, ctx.user.role);
       
-      console.log('[corretores.list] User:', ctx.user.email, 'Role:', ctx.user.role, 'CorretoresIds:', corretoresIds);
       
       // Se for admin, retorna todos os corretores
       if (!corretoresIds) {
         const result = await db.getAllCorretores();
-        console.log('[corretores.list] Admin - Retornando todos:', result.length, 'corretores');
         return result;
       }
       
       // Se for gestor, retorna apenas os corretores da sua equipe
       const result = await db.getCorretoresByIds(corretoresIds);
-      console.log('[corretores.list] Gestor - Retornando:', result.length, 'corretores da equipe');
       return result;
     }),
     
@@ -2644,7 +2641,6 @@ export const appRouter = router({
         const dataFim = input?.dataFim || hoje;
         const dataInicio = input?.dataInicio || new Date(hoje.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-        console.log('[Relatório] Buscando escolhas entre', dataInicio.toISOString(), 'e', dataFim.toISOString());
 
         // Buscar escolhas usando helper
         const escolhas = await db.getEscolhasDiarias({
@@ -2653,7 +2649,6 @@ export const appRouter = router({
           corretorId: input?.corretorId,
         });
 
-        console.log('[Relatório] Encontradas', escolhas.length, 'escolhas');
 
         // Calcular estatísticas
         const totalEscolhas = escolhas.length;
@@ -3740,7 +3735,6 @@ export const appRouter = router({
             // Se houver alterações, atualizar o lead
             if (Object.keys(dadosAlterados).length > 0) {
               await db.updateLead(leadId, dadosAlterados);
-              console.log(`[Agendamento] Lead ${leadId} atualizado com novos dados:`, dadosAlterados);
             }
           }
         } else {
@@ -3889,7 +3883,6 @@ export const appRouter = router({
             (payload as any).mensagemWhatsApp = mensagemWhatsApp;
             
             await enviarWebhookZapier(zapierWebhookUrl, payload);
-            console.log('[Agendamento] Webhook enviado para Zapier:', input.telefone);
           } catch (zapierError) {
             // Não falhar o agendamento se o webhook falhar
             console.error('[Agendamento] Erro ao enviar webhook Zapier:', zapierError);
@@ -3909,7 +3902,6 @@ export const appRouter = router({
               endereco: projeto?.endereco
             });
             
-            console.log('[Agendamento] Confirmação enviada via WhatsApp para:', input.telefone);
           } catch (whatsappError) {
             // Não falhar o agendamento se o WhatsApp falhar
             console.error('[Agendamento] Erro ao enviar WhatsApp:', whatsappError);
@@ -4052,6 +4044,55 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         return await db.converterConversaEmLead(input.sessionId, input.corretorId);
+      }),
+    // ── FAQ Admin ──────────────────────────────────────────────────────────
+    // Listar todas as FAQs (incluindo inativas) para o painel admin
+    listAllFaqs: gestorProcedure
+      .input(z.object({ categoria: z.string().optional() }).optional())
+      .query(async ({ input }) => {
+        return await db.getFaqsChatbot(input?.categoria);
+      }),
+    // Criar nova FAQ
+    createFaq: gestorProcedure
+      .input(z.object({
+        pergunta: z.string().min(5),
+        resposta: z.string().min(5),
+        categoria: z.enum(["financiamento","documentacao","visita","preco","localizacao","empreendimento","empresa","geral"]).default("geral"),
+        palavrasChave: z.string().optional(),
+        projectId: z.number().optional(),
+        prioridade: z.number().default(0),
+        ativo: z.boolean().default(true),
+      }))
+      .mutation(async ({ input }) => {
+        return await db.createFaqChatbot(input);
+      }),
+    // Atualizar FAQ existente
+    updateFaq: gestorProcedure
+      .input(z.object({
+        id: z.number(),
+        pergunta: z.string().min(5).optional(),
+        resposta: z.string().min(5).optional(),
+        categoria: z.enum(["financiamento","documentacao","visita","preco","localizacao","empreendimento","empresa","geral"]).optional(),
+        palavrasChave: z.string().optional(),
+        projectId: z.number().optional(),
+        prioridade: z.number().optional(),
+        ativo: z.boolean().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return await db.updateFaqChatbot(id, data);
+      }),
+    // Deletar FAQ (soft delete)
+    deleteFaq: gestorProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return await db.deleteFaqChatbot(input.id);
+      }),
+    // Buscar FAQs por texto
+    searchFaq: gestorProcedure
+      .input(z.object({ query: z.string().min(2) }))
+      .query(async ({ input }) => {
+        return await db.searchFaqChatbot(input.query);
       }),
   }),
 
@@ -4439,7 +4480,6 @@ export const appRouter = router({
 
         for (const arq of input.arquivos) {
           try {
-            console.log(`[Drive Import] Baixando: ${arq.nomeArquivo}`);
             const buffer = await downloadFileFromDrive(arq.driveFileId);
             await processTabelaoFromBuffer(arq.construtoraId, buffer, input.mes, input.ano);
             iniciados++;
@@ -4537,21 +4577,23 @@ export const appRouter = router({
   // METAS GLOBAIS E DASHBOARD DE PERFORMANCE
   // ============================================================================
   metasGlobais: router({
-    // Buscar meta global do mês/ano
+    // Buscar meta global do mês/ano (cria com zeros se não existir)
     get: gestorProcedure
       .input(z.object({
         mes: z.number().min(1).max(12),
         ano: z.number(),
       }))
       .query(async ({ input }) => {
-        return await db.getMetaGlobal(input.mes, input.ano);
+        // Upsert: retorna existente ou cria com zeros
+        return await db.upsertMetaGlobal(input.mes, input.ano, {});
       }),
     
     // Criar ou atualizar meta global por mês/ano (upsert)
     update: adminProcedure
       .input(z.object({
-        mes: z.number().min(1).max(12),
-        ano: z.number(),
+        id: z.number().optional(),
+        mes: z.number().min(1).max(12).optional(),
+        ano: z.number().optional(),
         metaVGV: z.string().optional(),
         metaContratos: z.number().optional(),
         metaLeads: z.number().optional(),
@@ -4559,7 +4601,8 @@ export const appRouter = router({
         metaVisitas: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
-        const { mes, ano, ...data } = input;
+        const { id: _id, mes, ano, ...data } = input;
+        if (!mes || !ano) return null;
         return await db.upsertMetaGlobal(mes, ano, data);
       }),
   }),

@@ -68,13 +68,15 @@ describe("Interface de Leads para Corretores", () => {
     const ctx = createCorretorContext(2);
     const caller = appRouter.createCaller(ctx);
 
+    // leads.list retorna { leads, total, page, limit, totalPages }
     const result = await caller.leads.list();
+    const leadsArray = Array.isArray(result) ? result : (result as any).leads;
 
     // Deve retornar apenas leads do corretor 2
-    expect(Array.isArray(result)).toBe(true);
+    expect(Array.isArray(leadsArray)).toBe(true);
     
     // Todos os leads retornados devem pertencer ao corretor autenticado
-    result.forEach((lead: any) => {
+    leadsArray.forEach((lead: any) => {
       if (lead.corretorId) {
         expect(lead.corretorId).toBe(2);
       }
@@ -190,8 +192,12 @@ describe("Interface de Leads para Corretores", () => {
     const corretorCtx = createCorretorContext(2);
     const corretorCaller = appRouter.createCaller(corretorCtx);
 
-    const gestorLeads = await gestorCaller.leads.list();
-    const corretorLeads = await corretorCaller.leads.list();
+    // leads.list retorna { leads, total, page, limit, totalPages }
+    const gestorResult = await gestorCaller.leads.list();
+    const corretorResult = await corretorCaller.leads.list();
+
+    const gestorLeads = Array.isArray(gestorResult) ? gestorResult : (gestorResult as any).leads;
+    const corretorLeads = Array.isArray(corretorResult) ? corretorResult : (corretorResult as any).leads;
 
     // Gestor pode ver todos os leads (ou pelo menos >= leads do corretor)
     expect(gestorLeads.length).toBeGreaterThanOrEqual(corretorLeads.length);

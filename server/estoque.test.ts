@@ -13,22 +13,24 @@ describe("Sistema de Estoque de Leads", () => {
     const db = await getDb();
     if (!db) throw new Error("Database não disponível");
 
-    // Buscar gestor (pode ser admin ou gestor)
-    let gestores = await db.select().from(users).where(eq(users.role, "admin")).limit(1);
-    if (gestores.length === 0) {
-      gestores = await db.select().from(users).where(eq(users.role, "gestor")).limit(1);
-    }
-    if (gestores.length === 0) throw new Error("Gestor não encontrado");
-    gestorId = gestores[0].id;
+    // Criar gestor de teste
+    const gestorResult = await db.insert(users).values({
+      openId: `test-gestor-estoque-${Date.now()}`,
+      name: 'Gestor Teste Estoque',
+      email: `gestor.estoque.${Date.now()}@test.com`,
+      role: 'admin',
+    });
+    gestorId = (gestorResult as any)[0].insertId;
 
-    // Buscar corretor
-    const corretores = await db.select().from(users).where(eq(users.role, "corretor")).limit(1);
-    if (corretores.length > 0) {
-      corretorId = corretores[0].id;
-      
-      // Marcar corretor como ausente para forçar estoque
-      await db.update(users).set({ status: "ausente" }).where(eq(users.id, corretorId));
-    }
+    // Criar corretor de teste (ausente para forçar estoque)
+    const corretorResult = await db.insert(users).values({
+      openId: `test-corretor-estoque-${Date.now()}`,
+      name: 'Corretor Teste Estoque',
+      email: `corretor.estoque.${Date.now()}@test.com`,
+      role: 'corretor',
+      status: 'ausente',
+    });
+    corretorId = (corretorResult as any)[0].insertId;
 
     // Criar lead de teste
     const [novoLead] = await db.insert(leads).values({

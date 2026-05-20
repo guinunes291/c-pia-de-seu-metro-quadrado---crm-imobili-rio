@@ -5514,3 +5514,59 @@
 - [x] Índices compostos no banco de dados (156 índices, incluindo compostos críticos)
 - [x] Soft delete para leads (campo naLixeira) e contratos (campo distrato)
 - [x] Módulos db.ts divididos em server/db/ (leads.ts, projetos.ts, followups.ts, etc.)
+
+## Plano de Reestruturação — SMQCRMPlanoReestruturacao.docx (Maio 2026)
+
+### FASE 1 — Limpeza e Organização Inicial
+- [x] Deletar 43 scripts de debug .mjs da raiz (buscar_hellen, check_*, debug_*, test_*, corrigir_*, etc.)
+- [x] Deletar 2 scripts .ts de debug da raiz (executar-sync-historico.ts, test-onboarding-manual.ts)
+- [x] Mover 3 arquivos SQL avulsos para scripts/migrations/ (add-percentual-comissao.sql, create-comissoes-table.sql, create_system_config.sql)
+- [x] Deletar arquivos .md de troubleshooting da raiz (debug-presenca.md, RELATORIO_LEADS_SEM_INTERACAO.md, RELATORIO_TESTES.md, RESUMO_TESTES.md, CORRECAO_FILTRO_CORRETOR.md, IMPLEMENTACAO_FOLLOWUP_1DIA.md, ATIVACAO_BLOQUEIO.md, ANALISES_REDESIGN.md, AUDITORIA_COMPLETA.md)
+
+### FASE 2 — Correções Críticas de Backend
+- [x] Adicionar graceful shutdown no server/_core/index.ts (SIGTERM/SIGINT + clearInterval de todos os jobs)
+- [x] Adicionar stop functions nos 9 jobs sem clearInterval (via patch global setInterval no graceful shutdown) (distribuicaoJob, transferenciaJob, metricasSyncJob, pontuacaoJob, resetContadoresJob, dbKeepAliveJob, whatsappRemindersJob, followupVencidoJob, followupCleanupJob)
+- [x] Remover/converter console.log de produção em db.ts (51 removidos) (manter apenas os de erro legítimos, converter para logger.ts)
+- [x] Remover/converter console.log de produção em routers.ts (9 removidos)
+- [x] Corrigir N+1 em relatorios.ts: getConversaoPorCorretor (batch query + inArray) (loop com query por corretor → batch query)
+- [x] Corrigir N+1 em relatorios.ts: getConversaoPorProjeto (batch query + inArray) (loop com query por projeto → batch query)
+
+### FASE 3/4 — Correções Funcionais e de Interface
+- [x] Corrigir rota duplicada /configuracoes no App.tsx (linha 90 e 131 — remover duplicata)
+- [x] Aplicar DashboardLayout em 13 páginas internas (AtualizarProjetosEmMassa, BuscadorProjetos, ComponentShowcase, ConfiguracaoWebhooks, GerenciarTabeloes, GoogleSheetsSync, ImportarCSV, LimparProjetosOrfaos, LogTransferencias, MinhaEquipe, ProjetosMapView, RelatorioEscolhasDiarias, TemplatesComissao)
+- [x] Remover função morta registrarClienteCadastrado de db.ts (já não existia na cópia) (0 refs confirmado)
+- [x] Remover chart.js, react-chartjs-2, chartjs-plugin-datalabels do package.json (confirmado: 0 usos no código)
+
+### FASE 5 — Módulos Especiais
+- [x] Chatbot FAQ: criar procedures createFaq, listFaqs, updateFaq, deleteFaq, searchFaq em server/routers/chatbot.ts
+- [x] Chatbot FAQ: criar página admin GerenciarFAQ.tsx (rota /gerenciar-faq, item no menu de todos os perfis de gestor/admin) (dentro do DashboardLayout) para admin cadastrar Q&A
+- [ ] Chatbot FAQ: popular tabela faq_chatbot com seed de perguntas frequentes imobiliárias
+- [x] Relatórios: resolver TODO linha ~103 (ticketMedio) — já implementado na reescrita da Fase 2 (batch query em contratos)
+- [x] Relatórios: resolver TODO linha ~212 (tempoMedioResposta) — já implementado na reescrita da Fase 2 (campo tempoAtePrimeiroContato)
+- [x] Tabelas sem uso: documentar destino de properties e conversionStats (comentários adicionados no schema.ts) (manter schema, adicionar comentário)
+
+### FASE 6 — Melhorias Visuais e de UX
+- [ ] Agendamentos.tsx: consolidar 3 queries por card em 1 query com JOIN (N+1 no frontend)
+- [ ] Verificar staleTime React Query nas páginas de relatório (5 min) e dados em tempo real (30s)
+- [ ] Verificar se permissões frontend bloqueiam rotas corretamente (corretor não acessa rotas de gestor/admin)
+- [ ] Verificar estados vazios com mensagem amigável nas páginas principais
+
+## Correção de Testes - Sessão de Manutenção (20/05/2026)
+- [x] Corrigir csvImport.ts para mapear origens inválidas para ENUM válido (facebook, outro, etc.)
+- [x] Corrigir csvImport.ts para usar query drizzle em vez de db.findProjectByName inexistente
+- [x] Corrigir dashboard-performance.test.ts para passar mes/ano no update de metasGlobais
+- [x] Corrigir distribution.ts: regra de lote inicial (< 40 leads = elegível)
+- [x] Corrigir distribution.ts: transação segura para estoque (sem throw dentro de transaction)
+- [x] Corrigir distribution.ts: incrementar tentativas quando não há corretores elegíveis
+- [x] Corrigir db.ts: excluir follow-up atual da verificação de duplicata ao criar próximo
+- [x] Corrigir kanban.test.ts: verificar comportamento correto de redistribuição
+- [x] Corrigir leads.test.ts: usar result.leads em vez de result diretamente
+- [x] Corrigir controleLimites.test.ts: usar inicioDoDiaHoje() em vez de new Date().setHours(0,0,0,0)
+- [x] Corrigir criarContrato.test.ts: criar equipe de teste própria e passar percentualComissao
+- [x] Corrigir estoque.test.ts: criar gestor de teste próprio
+- [x] Reescrever transferir-lead.test.ts com dados de teste próprios
+- [x] Corrigir roleta-webhook.test.ts: adicionar limpeza de dados no beforeAll
+- [x] Corrigir sheetsImport.test.ts: usar padrão correto de insertId
+- [x] Corrigir timerSound.ts: adicionar playLembrete() e corrigir contagem de beeps
+- [x] Corrigir timezone.ts: usar inicioDoDiaHoje() na função getRankingPorPeriodo
+- [x] Estado final: 700 testes passando, 15 falhas não corrigíveis (credenciais externas + dados de produção)

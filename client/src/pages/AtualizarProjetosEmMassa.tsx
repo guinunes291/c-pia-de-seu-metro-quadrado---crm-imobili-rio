@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, CheckCircle2, RefreshCw, Database, AlertTriangle } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import DashboardLayout from "@/components/DashboardLayout";
 
 export default function AtualizarProjetosEmMassa() {
   const [executando, setExecutando] = useState(false);
@@ -49,6 +50,8 @@ export default function AtualizarProjetosEmMassa() {
   }
 
   return (
+    <DashboardLayout>
+
     <div className="container mx-auto py-8 space-y-6">
       <div>
         <h1 className="text-3xl font-bold mb-2">Atualização em Massa de Projetos</h1>
@@ -258,5 +261,7 @@ export default function AtualizarProjetosEmMassa() {
         </Card>
       )}
     </div>
-  );
+  
+    </DashboardLayout>
+    );
 }

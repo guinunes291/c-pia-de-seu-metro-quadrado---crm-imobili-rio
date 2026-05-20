@@ -168,8 +168,7 @@ export async function verificarTimerLeads() {
           eq(leads.transferidoManualmentePorAdmin, false),
           lt(leads.timestampRecebimento, limiteTempoAtras)
         )
-      )
-      .limit(50);
+      );
 
     console.log(`[Timer Job] Encontrados ${leadsExpirados.length} leads expirados`);
 

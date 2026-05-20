@@ -3,12 +3,13 @@ import { users, leads, conversionStats, distributionLog, leadEstoque } from "../
 import { eq, and, sql, isNull } from "drizzle-orm";
 
 // Configurações de distribuição
-// Regra: corretor elegível quando ≥ 90% dos seus leads têm status != aguardando_atendimento
-// Ou seja: máximo 10% dos leads podem estar aguardando
-const PERCENTUAL_MINIMO_TRABALHADOS = 0.9; // 90% dos leads devem estar fora de aguardando
+// Regra: corretor elegível quando ≥ 60% dos seus leads foram trabalhados (status != aguardando_atendimento)
+// Ou seja: máximo 40% dos leads podem estar aguardando
+const PERCENTUAL_MINIMO_TRABALHADOS = 0.9; // 90% dos leads devem estar fora de aguardando (regra de elegibilidade por %)
+const PERCENTUAL_CONCLUSAO_MINIMO = 0.6; // 60% de conclusão mínima para desbloqueio
 const LEADS_POR_RODADA = 30; // Leads enviados por rodada para cada corretor elegível
-// Aliases para compatibilidade com código legado
-const MINIMO_LEADS_GARANTIDO = LEADS_POR_RODADA;
+// Lote inicial garantido: corretor com menos de 40 leads sempre recebe mais
+const MINIMO_LEADS_GARANTIDO = 40;
 const MAXIMO_LEADS_AGUARDANDO = 20;
 const LIMITE_AGUARDANDO = 20;
 const LEADS_POR_RODADA_ESTOQUE = LEADS_POR_RODADA;
@@ -72,6 +73,8 @@ export async function isCorretorElegivel(corretorId: number): Promise<boolean> {
   const aguardandoNum = Number(aguardando) || 0;
   // Se não tem leads, é elegível (receberá o primeiro lote)
   if (totalNum === 0) return true;
+  // Elegível se total de leads < MINIMO_LEADS_GARANTIDO (lote inicial — ainda está sendo abastecido)
+  if (totalNum < MINIMO_LEADS_GARANTIDO) return true;
   // Elegível se pelo menos 90% dos leads estão com status != aguardando_atendimento
   const percentualTrabalhados = (totalNum - aguardandoNum) / totalNum;
   return percentualTrabalhados >= PERCENTUAL_MINIMO_TRABALHADOS;
@@ -335,16 +338,23 @@ export async function distribuirLeadAutomatico(
         leadData.origem || undefined
       );
 
-      // Se não houver corretores disponíveis, adicionar ao estoque
+            // Se não houver corretores disponíveis, adicionar ao estoque
       if (corretoresElegiveis.length === 0) {
-        await tx.insert(leadEstoque).values({
-          leadId: leadId,
-          tipoFila: "normal",
-          motivoEstoque: "Nenhum corretor elegível disponível",
-          tentativasDistribuicao: 0,
-        });
-        
-        throw new Error("Nenhum corretor disponível. Lead adicionado ao estoque.");
+        // Verificar se já existe no estoque para evitar duplicata
+        const jaNoEstoque = await tx.select()
+          .from(leadEstoque)
+          .where(and(eq(leadEstoque.leadId, leadId), eq(leadEstoque.status, 'aguardando')))
+          .limit(1);
+        if (jaNoEstoque.length === 0) {
+          await tx.insert(leadEstoque).values({
+            leadId: leadId,
+            tipoFila: "normal",
+            motivoEstoque: "Nenhum corretor elegível disponível",
+            tentativasDistribuicao: 0,
+          });
+        }
+        // Retornar objeto de controle em vez de lançar exceção (para não fazer rollback)
+        return { adicionadoAoEstoque: true };
       }
 
       // Selecionar o melhor corretor
@@ -372,14 +382,17 @@ export async function distribuirLeadAutomatico(
       return { corretorId: melhorCorretor, nome: leadData.nome };
     });
 
+        // Verificar se foi adicionado ao estoque
+    if ((result as any).adicionadoAoEstoque) {
+      return { success: false, message: "Nenhum corretor disponível. Lead adicionado ao estoque." };
+    }
     // Enviar notificação fora da transação (não crítico)
     try {
-      await notifyLeadDistribuido(result.corretorId, leadId, result.nome);
+      await notifyLeadDistribuido((result as any).corretorId, leadId, (result as any).nome);
     } catch (error) {
       console.error("Erro ao enviar notificação:", error);
     }
-
-    return { success: true, corretorId: result.corretorId };
+    return { success: true, corretorId: (result as any).corretorId };
   } catch (error: any) {
     return { success: false, message: error.message };
   }
@@ -743,6 +756,11 @@ export async function distribuirLeadsDoEstoque(): Promise<{
   // Buscar corretores elegíveis primeiro
   const corretoresElegiveis = await getCorretoresElegiveisParaDistribuicao();
   if (corretoresElegiveis.length === 0) {
+    // Incrementar tentativas dos leads em estoque
+    const agora = new Date();
+    await db.execute(
+      sql`UPDATE ${leadEstoque} SET tentativasDistribuicao = tentativasDistribuicao + 1, ultimaTentativa = ${agora} WHERE status = 'aguardando'`
+    );
     return { distribuidos: 0, erros: 0, mensagens: ["Nenhum corretor elegível disponível"] };
   }
 

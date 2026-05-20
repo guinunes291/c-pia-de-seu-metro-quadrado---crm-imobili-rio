@@ -629,11 +629,12 @@ function AgendamentoCard({
   onUpdateStatus: (status: 'pendente' | 'confirmado' | 'realizado' | 'cancelado' | 'reagendado' | 'nao_compareceu') => void; // Fase 2
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const { data: lead } = trpc.leads.getById.useQuery({ id: agendamento.leadId });
-  const { data: corretor } = trpc.users.getById.useQuery({ id: agendamento.corretorId });
+  // staleTime alto para aproveitar cache entre cards — reduz N+1 de queries por card
+  const { data: lead } = trpc.leads.getById.useQuery({ id: agendamento.leadId }, { staleTime: 5 * 60_000 });
+  const { data: corretor } = trpc.users.getById.useQuery({ id: agendamento.corretorId }, { staleTime: 10 * 60_000 });
   const { data: projeto } = trpc.projects.getById.useQuery(
     { id: agendamento.projectId! },
-    { enabled: !!agendamento.projectId }
+    { enabled: !!agendamento.projectId, staleTime: 10 * 60_000 }
   );
   
   const statusConfig = STATUS_CONFIG[agendamento.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pendente;

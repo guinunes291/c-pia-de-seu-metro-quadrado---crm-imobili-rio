@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Trash2, ExternalLink, Copy } from "lucide-react";
 import { toast } from "sonner";
+import DashboardLayout from "@/components/DashboardLayout";
 
 export default function ConfiguracaoWebhooks() {
 
@@ -149,6 +150,8 @@ export default function ConfiguracaoWebhooks() {
                       ([formId, projectId]) => {
                         const project = projects?.find((p) => p.id === projectId);
                         return (
+                          <DashboardLayout>
+
                           <div
                             key={formId}
                             className="flex items-center justify-between p-3 bg-background border rounded-md"
@@ -170,7 +173,9 @@ export default function ConfiguracaoWebhooks() {
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
-                        );
+                        
+                          </DashboardLayout>
+                          );
                       }
                     )}
                   </div>

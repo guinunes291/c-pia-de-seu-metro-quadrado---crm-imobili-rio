@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Users, Target, TrendingUp, Phone, Mail } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
+import DashboardLayout from "@/components/DashboardLayout";
 
 export default function MinhaEquipe() {
   const { user } = useAuth();
@@ -40,6 +41,8 @@ export default function MinhaEquipe() {
   }
 
   return (
+    <DashboardLayout>
+
     <div className="container py-6">
       {/* Header da Equipe */}
       <div className="mb-6">
@@ -158,5 +161,7 @@ export default function MinhaEquipe() {
         </CardContent>
       </Card>
     </div>
-  );
+  
+    </DashboardLayout>
+    );
 }

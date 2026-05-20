@@ -115,7 +115,6 @@ export async function getDb() {
         keepAliveInitialDelay: 0,
       });
       _db = drizzle(_pool);
-      console.log('[Database] Pool criado com sucesso');
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -331,29 +330,34 @@ export async function countLeadsWebhookRecebidosHoje(corretorId: number, dataIni
 }
 
 export async function createCorretor(data: {
-  name: string;
+  name?: string;
+  nome?: string; // alias pt-BR
   email?: string;
   telefone?: string;
   status?: "presente" | "ausente";
+  statusPlantao?: "presente" | "ausente"; // alias pt-BR
   fotoUrl?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
+  // Aceitar nome/name e statusPlantao/status como aliases
+  const resolvedName = data.name || data.nome || "Corretor";
+  const resolvedStatus = data.status || data.statusPlantao || "ausente";
   // Gera um openId temporário para corretores criados manualmente
   const openId = `corretor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
   const result = await db.insert(users).values({
     openId,
-    name: data.name,
+    name: resolvedName,
     email: data.email || null,
     telefone: data.telefone || null,
     role: "corretor",
-    status: data.status || "ausente",
+    status: resolvedStatus,
     fotoUrl: data.fotoUrl || null,
   });
-  
-  return result;
+  // Retornar o usuário criado com o id (não apenas o ResultSetHeader)
+  const insertId = (result as any)[0]?.insertId ?? result.insertId;
+  const criado = await db.select().from(users).where(eq(users.id, Number(insertId))).limit(1);
+  return criado[0] ?? { id: Number(insertId), openId, name: resolvedName, role: 'corretor' as const };
 }
 
 export async function updateCorretor(id: number, data: {
@@ -414,7 +418,6 @@ export async function deleteCorretor(id: number, redistribuirLeads: boolean = fa
     
     // Redistribuir leads para outros corretores
     const leadsRedistribuidos = await redistribuirLeadsDoCorretor(id);
-    console.log(`[DeleteCorretor] ${leadsRedistribuidos} leads redistribuídos do corretor ${id}`);
   }
   
   // Remover corretor da fila de distribuição
@@ -453,7 +456,6 @@ export async function deleteCorretor(id: number, redistribuirLeads: boolean = fa
   await db.delete(resumoPresencaDiaria).where(eq(resumoPresencaDiaria.corretorId, id));
   await db.delete(historicoPresenca).where(eq(historicoPresenca.corretorId, id));
 
-  console.log(`[DeleteCorretor] Registros operacionais do corretor ${id} removidos`);
   
   // Excluir o corretor
   await db.delete(users).where(eq(users.id, id));
@@ -1253,7 +1255,7 @@ export async function bulkUpdateLeadStatus(
   return { atualizados: leadsAtuais.length };
 }
 
-export async function updateLead(id: number, data: Partial<InsertLead>) {
+export async function updateLead(id: number, data: Partial<InsertLead> & { _observacaoStatus?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   
@@ -1268,6 +1270,7 @@ export async function updateLead(id: number, data: Partial<InsertLead>) {
         corretorId: leadAtual.corretorId || 0,
         statusAnterior: leadAtual.status as any,
         statusNovo: data.status as any,
+        observacao: data._observacaoStatus,
       });
       
       // Se mudou para "em_atendimento", criar follow-up automático para o próximo dia às 09:00
@@ -1294,9 +1297,7 @@ export async function updateLead(id: number, data: Partial<InsertLead>) {
             status: 'pendente',
           });
           
-          console.log(`[updateLead] Follow-up automático criado para lead ${id} em ${dataFollowUp.toISOString()}`);
         } else {
-          console.log(`[updateLead] Follow-up já existe para lead ${id} em ${dataFollowUp.toISOString()}, pulando criação`);
         }
       }
     }
@@ -1323,13 +1324,23 @@ export async function registrarTransicaoStatus(data: {
 }) {
   const db = await getDb();
   if (!db) return;
-  
+  // Inserir na tabela de transições de status (auditoria de funil)
   await db.insert(leadStatusTransitions).values({
     leadId: data.leadId,
     corretorId: data.corretorId,
     statusAnterior: data.statusAnterior as any,
     statusNovo: data.statusNovo as any,
     observacao: data.observacao,
+  });
+  // Inserir também em leadHistory para que getLeadHistory retorne a mudança
+  await db.insert(leadHistory).values({
+    leadId: data.leadId,
+    corretorId: data.corretorId,
+    tipo: 'mudanca_status' as any,
+    resultado: 'outro' as any,
+    observacoes: data.observacao ?? '',
+    statusAnterior: data.statusAnterior,
+    statusNovo: data.statusNovo,
   });
 }
 
@@ -2048,7 +2059,6 @@ export interface DashboardFilters {
 }
 
 export async function getDashboardMetrics(filtros?: DashboardFilters) {
-  console.log('[getDashboardMetrics] Filtros recebidos:', JSON.stringify(filtros));
   
   const db = await getDb();
   if (!db) return null;
@@ -2158,7 +2168,6 @@ export async function getDashboardMetrics(filtros?: DashboardFilters) {
     if (r.status === 'rejected') {
       console.error(`[getDashboardMetrics] Query "${queryNames[i]}" falhou:`, r.reason);
     } else {
-      console.log(`[getDashboardMetrics] Query "${queryNames[i]}" OK:`, JSON.stringify(r.value?.[0] ?? {}));
     }
   });
 
@@ -2188,7 +2197,6 @@ export async function getDashboardMetrics(filtros?: DashboardFilters) {
     vgv: Number(vgvResult[0]?.total || 0),
   };
 
-  console.log('[getDashboardMetrics] Resultado final:', JSON.stringify(metricsResult));
   return metricsResult;
 }
 
@@ -2230,7 +2238,6 @@ export async function diagnosticoDashboard() {
       db.select({ status: leads.status, count: sql<number>`COUNT(*)` }).from(leads).groupBy(leads.status).limit(20)),
   ]);
 
-  console.log('[diagnosticoDashboard] Resultado:', JSON.stringify(queries, null, 2));
 
   return { dbOk, databaseUrl: !!process.env.DATABASE_URL, queries };
 }
@@ -2786,7 +2793,7 @@ export async function getMetricasHistoricas(dias: number = 30, corretoresIds?: n
 
   // Uma única query com GROUP BY DATE e status
   const rows = await db.select({
-    dataStr: sql<string>`DATE_FORMAT(${leads.createdAt}, '%Y-%m-%d')`.as('dataStr'),
+    dataStr: sql<string>`DATE_FORMAT(MIN(${leads.createdAt}), '%Y-%m-%d')`.as('dataStr'),
     status: leads.status,
     count: sql<number>`count(*)`.as('count'),
   })
@@ -3496,18 +3503,15 @@ export async function distribuirLeadPelaRoleta(leadId: number): Promise<number |
     // Lead do projeto foco - usar fila foco (SEM LIMITE)
     corretorId = await getProximoCorretorFilaFoco();
     if (corretorId) tipoFilaUsada = 'foco';
-    console.log(`[Roleta] Lead do projeto foco - tentando fila foco: ${corretorId ? 'sucesso' : 'sem corretor'}`);
   }
   
   if (!corretorId) {
     // Lead de outro projeto OU fila foco sem corretores - usar fila geral (COM LIMITE)
     corretorId = await getProximoCorretorFila();
     if (corretorId) tipoFilaUsada = 'geral';
-    console.log(`[Roleta] Usando fila geral: ${corretorId ? 'sucesso' : 'sem corretor'}`);
   }
   
   if (!corretorId) {
-    console.log('[Roleta] Nenhum corretor disponível para receber o lead');
     return null;
   }
   
@@ -3541,7 +3545,6 @@ export async function distribuirLeadPelaRoleta(leadId: number): Promise<number |
   try {
     await criarFollowUpParaLead(leadId, corretorId);
   } catch (e) {
-    console.log('[Roleta] Erro ao criar follow-up:', e);
   }
   
   // Buscar dados do lead para notificação
@@ -3565,7 +3568,6 @@ export async function distribuirLeadPelaRoleta(leadId: number): Promise<number |
     console.warn('[Roleta] SSE/cache notify falhou (não crítico):', e);
   }
 
-  console.log(`[Roleta] Lead ${leadId} distribuído para corretor ${corretorId}`);
   
   return corretorId;
 }
@@ -3691,7 +3693,6 @@ export async function processarLeadWebhook(webhookToken: string, dadosLead: {
     try {
       dataHoraCriacao = new Date(dadosLead.dataHoraCriacao);
     } catch (e) {
-      console.log('[Webhook] Erro ao parsear data:', dadosLead.dataHoraCriacao);
     }
   }
   
@@ -3709,14 +3710,6 @@ export async function processarLeadWebhook(webhookToken: string, dadosLead: {
     finalidadeImovel: dadosLead.finalidadeImovel,
     dataHoraCriacao: dadosLead.dataHoraCriacao ? new Date(dadosLead.dataHoraCriacao) : undefined,
     origemWebhook: true, // Marcar como lead via webhook para notificação urgente
-  });
-  
-  console.log('[Webhook] Lead criado com sucesso:', {
-    leadId: leadCriado.id,
-    nome: leadCriado.nome,
-    projectId: leadCriado.projectId,
-    faixaRenda: leadCriado.faixaRenda,
-    origemWebhook: leadCriado.origemWebhook
   });
   
   // Incrementar contador do webhook
@@ -3746,7 +3739,6 @@ export async function processarLeadWebhook(webhookToken: string, dadosLead: {
             leadCampanha: leadCriado.campanha || undefined,
             leadFaixaRenda: leadCriado.faixaRenda || undefined,
           });
-          console.log('[Webhook] Notificação por email enviada para:', corretor.email);
         } catch (emailError) {
           console.error('[Webhook] Erro ao enviar email:', emailError);
         }
@@ -3845,14 +3837,6 @@ export async function processarLeadWebhookFoco(webhookToken: string, dadosLead: 
     origemWebhook: true, // Marcar como lead via webhook para notificação urgente
   });
   
-  console.log('[Webhook Foco] Lead criado com sucesso:', {
-    leadId: leadCriado.id,
-    nome: leadCriado.nome,
-    projectId: leadCriado.projectId,
-    faixaRenda: leadCriado.faixaRenda,
-    origemWebhook: leadCriado.origemWebhook
-  });
-  
   // Incrementar contador do webhook
   await incrementarLeadsWebhook(webhook.id);
   
@@ -3890,7 +3874,6 @@ export async function processarLeadWebhookFoco(webhookToken: string, dadosLead: 
     try {
       await criarFollowUpParaLead(leadCriado.id, corretorId);
     } catch (e) {
-      console.log('[Webhook Foco] Erro ao criar follow-up:', e);
     }
     
     // Notificar corretor
@@ -3916,7 +3899,6 @@ export async function processarLeadWebhookFoco(webhookToken: string, dadosLead: 
             leadCampanha: undefined,
             leadFaixaRenda: leadCriado.faixaRenda || undefined,
           });
-          console.log('[Webhook Foco] Notificação por email enviada para:', corretor.email);
         } catch (emailError) {
           console.error('[Webhook Foco] Erro ao enviar email:', emailError);
         }
@@ -3943,9 +3925,7 @@ export async function processarLeadWebhookFoco(webhookToken: string, dadosLead: 
             webhookUrl: webhookNotificacaoUrl, // URL específica da fila Foco configurada pelo admin
           });
           if (zapierResult.success) {
-            console.log('[Webhook Foco] Notificação WhatsApp enviada via Zapier para:', corretor.name);
           } else {
-            console.log('[Webhook Foco] Zapier não configurado ou falhou:', zapierResult.error);
           }
         } catch (zapierError) {
           console.error('[Webhook Foco] Erro ao notificar via Zapier:', zapierError);
@@ -3955,7 +3935,6 @@ export async function processarLeadWebhookFoco(webhookToken: string, dadosLead: 
       console.error('[Webhook Foco] Erro ao notificar corretor:', error);
     }
     
-    console.log(`[Webhook Foco] Lead ${leadCriado.id} distribuído para corretor ${corretorId} (Fila Foco)`);
 
     // Push notification nativa (non-blocking) -- funciona mesmo com aba fechada / PWA
     try {
@@ -4567,7 +4546,7 @@ export async function registrarTentativaFollowUp(
     const { proximoDiaAs9h } = await import('./timezone');
     const proximoFollowUp = lead.status === "em_atendimento" ? proximoDiaAs9h() : null;
 
-    // Verificar se já existe follow-up pendente (antes da transação para não bloquear)
+    // Verificar se já existe outro follow-up pendente (excluindo o atual que será marcado como concluuído)
     let existente: typeof followUps.$inferSelect | null = null;
     if (proximoFollowUp) {
       const existenteResult = await db.select()
@@ -4576,6 +4555,7 @@ export async function registrarTentativaFollowUp(
           eq(followUps.leadId, atual.leadId),
           eq(followUps.corretorId, atual.corretorId),
           eq(followUps.status, "pendente"),
+          ne(followUps.id, followUpId),
           sql`DATE(${followUps.dataFollowUp}) = DATE(${proximoFollowUp})`
         ))
         .limit(1);
@@ -4611,9 +4591,7 @@ export async function registrarTentativaFollowUp(
           dataFollowUp: proximoFollowUp,
           status: "pendente"
         });
-        console.log(`[registrarTentativaFollowUp] Novo follow-up criado para lead ${atual.leadId} em ${proximoFollowUp.toISOString()}`);
       } else if (proximoFollowUp && existente) {
-        console.log(`[registrarTentativaFollowUp] Follow-up já existe para lead ${atual.leadId} em ${proximoFollowUp.toISOString()}, pulando criação`);
       }
     });
 
@@ -4721,7 +4699,6 @@ export async function getFollowUpsDoDiaExpandido(
 ) {
   const db = await getDb();
   if (!db) {
-    console.log("[getFollowUpsDoDiaExpandido] Erro: banco de dados não disponível");
     return [];
   }
   
@@ -4732,8 +4709,6 @@ export async function getFollowUpsDoDiaExpandido(
     const amanha = new Date(hoje);
     amanha.setDate(amanha.getDate() + 1);
     
-    console.log("[getFollowUpsDoDiaExpandido] Buscando follow-ups para corretorId:", corretorId);
-    console.log("[getFollowUpsDoDiaExpandido] Período: de", hoje.toISOString(), "até", amanha.toISOString());
     
     // Construir condições de filtro
     const conditions = [
@@ -4788,7 +4763,6 @@ export async function getFollowUpsDoDiaExpandido(
     
     const resultado = await query;
     
-    console.log("[getFollowUpsDoDiaExpandido] Resultado: encontrados", resultado.length, "follow-ups");
     
     return resultado;
     
@@ -5028,6 +5002,7 @@ export async function getRankingDia(data?: Date) {
 // Obter ranking por período (com filtro de datas)
 export async function getRankingPorPeriodo(dataInicio?: Date, dataFim?: Date, corretoresIds?: number[] | null) {
   const db = await getDb();
+  const { inicioDoDiaHoje } = await import('./timezone');
   if (!db) return [];
   
   // Se corretoresIds for array vazio, não há ninguém para mostrar
@@ -5046,7 +5021,7 @@ export async function getRankingPorPeriodo(dataInicio?: Date, dataFim?: Date, co
   
   // Se não tiver filtro, usar hoje
   if (conditions.length === 0) {
-    const hoje = new Date();
+    const hoje = inicioDoDiaHoje();
     conditions.push(sql`DATE(${atividadesDiarias.data}) = DATE(${hoje})`);
   }
   
@@ -6546,10 +6521,11 @@ export async function createAgendamento(data: {
   dataHoraAgendamento.setHours(hora || 9, minuto || 0, 0, 0);
   
   if (statusAtualIdx < agendadoIdx) {
-    // Atualizar status e proximoFollowup para aparecer em Tarefas do Dia
+    // Atualizar status e proximoFollowup, passando observação para o histórico via _observacaoStatus
     await updateLead(data.leadId, { 
       status: 'agendado',
-      proximoFollowup: dataHoraAgendamento
+      proximoFollowup: dataHoraAgendamento,
+      _observacaoStatus: 'Status atualizado automaticamente ao criar agendamento',
     });
   } else {
     // Apenas atualizar proximoFollowup para aparecer em Tarefas do Dia
@@ -6643,13 +6619,9 @@ export async function updateAgendamentoStatus(
   if (status === 'realizado') {
     const lead = await getLeadById(agendamento.leadId);
     if (lead && lead.status !== 'visita_realizada') {
-      await updateLead(agendamento.leadId, { status: 'visita_realizada' });
-      await registrarAlteracaoStatus({
-        leadId: agendamento.leadId,
-        corretorId: corretorId || agendamento.corretorId,
-        statusAnterior: lead.status,
-        statusNovo: 'visita_realizada',
-        observacoes: `Status alterado automaticamente ao marcar agendamento como realizado`
+      await updateLead(agendamento.leadId, {
+        status: 'visita_realizada',
+        _observacaoStatus: 'Status alterado automaticamente ao marcar agendamento como realizado',
       });
     }
   }
@@ -7849,6 +7821,46 @@ export async function createFaqChatbot(data: InsertFaqChatbot): Promise<FaqChatb
   return inserted[0] || null;
 }
 
+/**
+ * Atualizar FAQ
+ */
+export async function updateFaqChatbot(id: number, data: Partial<InsertFaqChatbot>): Promise<FaqChatbot | null> {
+  const db = await getDb();
+  if (!db) return null;
+  await db.update(faqChatbot).set(data).where(eq(faqChatbot.id, id));
+  const updated = await db.select().from(faqChatbot).where(eq(faqChatbot.id, id)).limit(1);
+  return updated[0] || null;
+}
+/**
+ * Deletar FAQ (soft delete via ativo=false)
+ */
+export async function deleteFaqChatbot(id: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  await db.update(faqChatbot).set({ ativo: false }).where(eq(faqChatbot.id, id));
+  return true;
+}
+/**
+ * Buscar FAQs por texto (pergunta, resposta ou palavras-chave)
+ */
+export async function searchFaqChatbot(query: string): Promise<FaqChatbot[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select()
+    .from(faqChatbot)
+    .where(
+      and(
+        eq(faqChatbot.ativo, true),
+        or(
+          sql`${faqChatbot.pergunta} LIKE ${'%' + query + '%'}`,
+          sql`${faqChatbot.resposta} LIKE ${'%' + query + '%'}`,
+          sql`${faqChatbot.palavrasChave} LIKE ${'%' + query + '%'}`
+        )!
+      )
+    )
+    .orderBy(desc(faqChatbot.prioridade))
+    .limit(10);
+}
 /**
  * Converter conversa em lead
  */
@@ -9319,13 +9331,11 @@ export async function cancelarFollowUpsPendentes(leadId: number) {
     const lead = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
     
     if (!lead[0]) {
-      console.log(`[cancelarFollowUpsPendentes] Lead ${leadId} não encontrado`);
       return 0;
     }
     
     // Se lead está "em_atendimento", não cancela follow-ups
     if (lead[0].status === 'em_atendimento') {
-      console.log(`[cancelarFollowUpsPendentes] Lead ${leadId} está em atendimento, mantendo follow-ups`);
       return 0;
     }
     
@@ -9341,7 +9351,6 @@ export async function cancelarFollowUpsPendentes(leadId: number) {
         eq(followUps.status, 'pendente')
       ));
     
-    console.log(`[cancelarFollowUpsPendentes] Lead ${leadId}: ${resultado.rowsAffected || 0} follow-ups cancelados`);
     return resultado.rowsAffected || 0;
     
   } catch (error) {
@@ -9377,7 +9386,6 @@ export async function cancelarFollowUpsPorTransferencia(leadId: number, corretor
       ));
 
     const cancelados = resultado.rowsAffected || 0;
-    console.log(`[cancelarFollowUpsPorTransferencia] Lead ${leadId}: ${cancelados} follow-ups do corretor ${corretorAnteriorId} cancelados`);
     return cancelados;
   } catch (error) {
     console.error('[cancelarFollowUpsPorTransferencia] Erro:', error);
@@ -9396,7 +9404,6 @@ export async function limparFollowUpsOrfaos() {
   if (!db) return { total: 0, cancelados: 0 };
   
   try {
-    console.log('[limparFollowUpsOrfaos] Iniciando limpeza de follow-ups órfãos...');
     
     // Buscar todos os follow-ups pendentes com seus leads
     const followUpsPendentes = await db
@@ -9409,17 +9416,14 @@ export async function limparFollowUpsOrfaos() {
       .leftJoin(leads, eq(followUps.leadId, leads.id))
       .where(eq(followUps.status, 'pendente'));
     
-    console.log(`[limparFollowUpsOrfaos] Encontrados ${followUpsPendentes.length} follow-ups pendentes`);
     
     // Filtrar follow-ups de leads que não estão "em_atendimento"
     const orfaos = followUpsPendentes.filter(f => f.leadStatus !== 'em_atendimento');
     
     if (orfaos.length === 0) {
-      console.log('[limparFollowUpsOrfaos] Nenhum follow-up órfão encontrado');
       return { total: followUpsPendentes.length, cancelados: 0 };
     }
     
-    console.log(`[limparFollowUpsOrfaos] Encontrados ${orfaos.length} follow-ups órfãos para cancelar`);
     
     // Cancelar cada follow-up órfão
     let cancelados = 0;
@@ -9439,7 +9443,6 @@ export async function limparFollowUpsOrfaos() {
       }
     }
     
-    console.log(`[limparFollowUpsOrfaos] Limpeza concluída: ${cancelados} follow-ups cancelados`);
     
     return {
       total: followUpsPendentes.length,
@@ -9559,7 +9562,6 @@ async function garantirAtividadeDiariaExiste(corretorId: number, data: Date) {
       contratosFechados: 0,
       pontuacao: 0,
     });
-    console.log(`[garantirAtividadeDiariaExiste] Criado registro para corretor ${corretorId} na data ${data.toISOString().split('T')[0]}`);
   }
 }
 
@@ -9639,7 +9641,6 @@ export async function sincronizarInteracoesDoDia() {
     await calcularPontuacaoDiaria(corretorId);
   }
   
-  console.log(`[Sync] Sincronizadas ${interacoesHoje.length} interações de ${corretoresMap.size} corretores`);
 }
 
 /**
@@ -9693,7 +9694,6 @@ export async function sincronizarVisitasDoDia() {
     await calcularPontuacaoDiaria(visita.corretorId);
   }
   
-  console.log(`[Sync] Sincronizadas ${visitasHoje.length} visitas`);
 }
 
 /**
@@ -9747,7 +9747,6 @@ export async function sincronizarDocumentacoesDoDia() {
     await calcularPontuacaoDiaria(doc.corretorId);
   }
   
-  console.log(`[Sync] Sincronizadas ${documentacoesHoje.length} documentações`);
 }
 
 /**
@@ -9801,7 +9800,6 @@ export async function sincronizarAnalisesCreditoDoDia() {
     await calcularPontuacaoDiaria(analise.corretorId);
   }
   
-  console.log(`[Sync] Sincronizadas ${analisesHoje.length} análises de crédito`);
 }
 
 /**
@@ -9858,7 +9856,6 @@ export async function sincronizarContratosDoDia() {
     await calcularPontuacaoDiaria(contrato.corretorId);
   }
   
-  console.log(`[Sync] Sincronizados ${contratosHoje.length} contratos`);
 }
 
 /**
@@ -9866,7 +9863,6 @@ export async function sincronizarContratosDoDia() {
  * Executa todas as sincronizações em sequência
  */
 export async function sincronizarTodasMetricasDoDia() {
-  console.log('[Sync] Iniciando sincronização de todas as métricas...');
   
   try {
     await sincronizarInteracoesDoDia();
@@ -9876,7 +9872,6 @@ export async function sincronizarTodasMetricasDoDia() {
     await sincronizarAnalisesCreditoDoDia();
     await sincronizarContratosDoDia();
     
-    console.log('[Sync] Sincronização completa!');
   } catch (error) {
     console.error('[Sync] Erro na sincronização:', error);
   }
@@ -9988,16 +9983,23 @@ export async function upsertMetaGlobal(mes: number, ano: number, data: {
   const db = await getDb();
   if (!db) return null;
 
-  const existing = await getMetaGlobal(mes, ano);
+    const existing = await getMetaGlobal(mes, ano);
   if (existing) {
-    await db.update(metasGlobais)
-      .set(data)
-      .where(eq(metasGlobais.id, existing.id));
-    return { ...existing, ...data };
+    // Só faz update se há campos a atualizar
+    const hasData = Object.keys(data).length > 0;
+    if (hasData) {
+      await db.update(metasGlobais)
+        .set(data)
+        .where(eq(metasGlobais.id, existing.id));
+      // Buscar o registro atualizado para retornar valores com formatação do banco (ex: decimal '100000000.00')
+      return await getMetaGlobal(mes, ano);
+    }
+    return existing;
   }
-
   const result = await db.insert(metasGlobais).values({ mes, ano, ...data });
-  return { id: Number((result as any)[0]?.insertId ?? 0), mes, ano, ...data };
+  // Buscar o registro recém criado para retornar todos os campos com defaults
+  const novo = await getMetaGlobal(mes, ano);
+  return novo ?? { id: Number((result as any)[0]?.insertId ?? 0), mes, ano, ...data };
 }
 
 /**
@@ -10613,7 +10615,6 @@ export async function distribuirLeadsSemCorretor(): Promise<{ distribuidos: numb
     .where(isNull(leads.corretorId))
     .orderBy(leads.createdAt);
   
-  console.log(`[Distribuição] Encontrados ${leadsSemCorretor.length} leads sem corretor`);
   
   let distribuidos = 0;
   let erros = 0;
@@ -10634,7 +10635,6 @@ export async function distribuirLeadsSemCorretor(): Promise<{ distribuidos: numb
     }
   }
   
-  console.log(`[Distribuição] Resultado: ${distribuidos} distribuídos, ${semCorretorDisponivel} sem corretor disponível, ${erros} erros`);
   
   return { distribuidos, erros, semCorretorDisponivel };
 }
@@ -12286,7 +12286,6 @@ export async function criarLeadDocumentacao(dados: {
     statusAnterior: 'novo',
     statusNovo: 'analise_credito',
   });
-  console.log(`[Webhook Docs] Lead criado automaticamente: id=${leadId}, nome=${dados.nome}, regime=${regimeLabel}, corretorId=${dados.corretorId || 'N/A'}, projectId=${dados.projectId || 'N/A'}`);
   return { id: leadId, nome: dados.nome || 'Cliente (via Formulário)', status: 'analise_credito', criado: true };
 }
 
@@ -12307,7 +12306,6 @@ export async function atualizarLeadParaAnaliseCredito(
 
   const statusAvancados = ['analise_credito', 'contrato_fechado', 'pos_venda'];
   if (statusAvancados.includes(leadAtual.status)) {
-    console.log(`[Webhook Docs] Lead ${leadId} já está em ${leadAtual.status}, pulando`);
     return;
   }
 
@@ -12337,7 +12335,6 @@ export async function atualizarLeadParaAnaliseCredito(
     statusNovo: 'analise_credito',
   });
 
-  console.log(`[Webhook Docs] Lead ${leadId} -> analise_credito (${regimeLabel})`);
 }
 
 

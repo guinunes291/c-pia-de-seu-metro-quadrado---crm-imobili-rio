@@ -70,7 +70,7 @@ describe("Criação Automática de Projetos na Importação", () => {
       status: "ativo",
     });
 
-    const originalId = Number(inserted.insertId);
+    const originalId = Number((inserted as any)[0]?.insertId ?? (inserted as any).insertId);
 
     // Executar função duas vezes
     const projectId1 = await testAutoCreateProject(projectName);
