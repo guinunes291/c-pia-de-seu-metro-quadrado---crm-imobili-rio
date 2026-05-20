@@ -1,0 +1,602 @@
+import { trpc } from "@/lib/trpc";
+import { gerarLinkWhatsApp } from "@/lib/whatsapp";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2, Users, UserCheck, UserX, Phone, Mail, Calendar, Filter, RefreshCw, Trash2, MessageCircle, Search } from "lucide-react";
+import TransferirLeadButton from "@/components/TransferirLeadButton";
+import { TransferirEmLoteDialog } from "@/components/TransferirEmLoteDialog";
+import { useState, useEffect } from "react";
+import DashboardLayout from "@/components/DashboardLayout";
+import { toast } from "sonner";
+import { TimerLead } from "@/components/TimerLead";
+
+type LeadStatus = 'novo' | 'aguardando_atendimento' | 'em_atendimento' | 'analise_credito' | 'contrato_fechado' | 'perdido';
+
+const statusLabels: Record<LeadStatus, string> = {
+  novo: "Novo",
+  aguardando_atendimento: "Aguardando",
+  em_atendimento: "Em Atendimento",
+  // agendado e visita_realizada são automáticos (não selecionáveis manualmente)
+  analise_credito: "Análise de Crédito",
+  contrato_fechado: "Contrato Fechado",
+  perdido: "Perdido",
+};
+
+const statusColors: Record<LeadStatus, string> = {
+  novo: "bg-blue-100 text-blue-800",
+  aguardando_atendimento: "bg-yellow-100 text-yellow-800",
+  em_atendimento: "bg-purple-100 text-purple-800",
+  analise_credito: "bg-indigo-100 text-indigo-800",
+  contrato_fechado: "bg-green-100 text-green-800",
+  perdido: "bg-red-100 text-red-800",
+};
+
+export default function LeadsPorCorretor() {
+  const [corretorId, setCorretorId] = useState<number | undefined>(undefined);
+  const [status, setStatus] = useState<LeadStatus | undefined>(undefined);
+  const [dataInicio, setDataInicio] = useState<string>("");
+  const [dataFim, setDataFim] = useState<string>("");
+  const [selectedLeads, setSelectedLeads] = useState<number[]>([]);
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [transferirEmLoteDialog, setTransferirEmLoteDialog] = useState(false);
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize] = useState<number>(50);
+
+  // Buscar corretores
+  const { data: corretores, isLoading: loadingCorretores } = trpc.corretores.listParaTransferencia.useQuery();
+
+  // Buscar estatísticas por corretor
+  const { data: estatisticas, isLoading: loadingEstatisticas, refetch: refetchEstatisticas } = 
+    trpc.distribution.getEstatisticasPorCorretor.useQuery();
+
+  // Buscar leads com filtros e paginação
+  const { data: leadsData, isLoading: loadingLeads, refetch: refetchLeads } = 
+    trpc.distribution.getLeadsPorCorretor.useQuery({
+      corretorId,
+      status,
+      dataInicio: dataInicio || undefined,
+      dataFim: dataFim || undefined,
+      busca: searchTerm || undefined,
+      page: currentPage,
+      pageSize,
+    });
+  
+  const leads = leadsData?.leads || [];
+  const totalLeads = leadsData?.total || 0;
+  const totalPages = leadsData?.totalPages || 1;
+
+  // A busca é feita no backend — filteredLeads é alias de leads para compatibilidade
+  const filteredLeads = leads;
+
+  // Resetar para página 1 ao mudar filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, corretorId, status, dataInicio, dataFim]);
+
+  // Mutation para excluir múltiplos leads
+  const deleteManyMutation = trpc.leads.deleteMany.useMutation({
+    onSuccess: (data) => {
+      toast.success(`${data.deleted} lead(s) excluído(s) com sucesso`);
+      setSelectedLeads([]);
+      refetchLeads();
+      refetchEstatisticas();
+    },
+    onError: (error) => {
+      toast.error(`Erro ao excluir leads: ${error.message}`);
+    },
+  });
+
+  const handleRefresh = () => {
+    refetchEstatisticas();
+    refetchLeads();
+  };
+
+  const clearFilters = () => {
+    setCorretorId(undefined);
+    setStatus(undefined);
+    setDataInicio("");
+    setDataFim("");
+  };
+
+  const toggleSelectLead = (leadId: number, index: number, shiftKey: boolean) => {
+    if (shiftKey && lastSelectedIndex !== null && leads) {
+      // Seleção com Shift: selecionar todos entre lastSelectedIndex e index
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      const rangeIds = leads.slice(start, end + 1).map(l => l.id);
+      
+      setSelectedLeads(prev => {
+        const newSelection = [...prev];
+        rangeIds.forEach(id => {
+          if (!newSelection.includes(id)) {
+            newSelection.push(id);
+          }
+        });
+        return newSelection;
+      });
+    } else {
+      // Seleção normal: toggle individual
+      setSelectedLeads(prev => 
+        prev.includes(leadId) 
+          ? prev.filter(id => id !== leadId)
+          : [...prev, leadId]
+      );
+      setLastSelectedIndex(index);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (leads && selectedLeads.length === leads.length) {
+      setSelectedLeads([]);
+    } else if (leads) {
+      setSelectedLeads(leads.map(l => l.id));
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedLeads.length === 0) return;
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = () => {
+    deleteManyMutation.mutate({ ids: selectedLeads });
+    setShowDeleteDialog(false);
+  };
+
+  if (loadingCorretores || loadingEstatisticas) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Leads por Corretor</h1>
+            <p className="text-muted-foreground">
+              Acompanhe os leads de cada corretor com filtros detalhados
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {selectedLeads.length > 0 && (
+              <>
+                <Button 
+                  variant="default" 
+                  onClick={() => setTransferirEmLoteDialog(true)}
+                >
+                  <Users className="mr-2 h-4 w-4" />
+                  Transferir {selectedLeads.length} {selectedLeads.length === 1 ? 'Lead' : 'Leads'}
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  onClick={handleDeleteSelected}
+                  disabled={deleteManyMutation.isPending}
+                >
+                  {deleteManyMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="mr-2 h-4 w-4" />
+                  )}
+                  Excluir ({selectedLeads.length})
+                </Button>
+              </>
+            )}
+            <Button variant="outline" onClick={handleRefresh}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Atualizar
+            </Button>
+          </div>
+        </div>
+
+        {/* Cards de Resumo por Corretor */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {estatisticas?.map((corretor) => (
+            <Card 
+              key={corretor.id} 
+              className={`cursor-pointer transition-all hover:shadow-md ${
+                corretorId === corretor.id ? "ring-2 ring-primary" : ""
+              }`}
+              onClick={() => setCorretorId(corretorId === corretor.id ? undefined : corretor.id)}
+            >
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">{corretor.nome}</CardTitle>
+                  <Badge variant={corretor.totalLeads > 0 ? "default" : "secondary"}>
+                    {corretor.totalLeads} leads
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex items-center gap-1">
+                    <UserCheck className="h-4 w-4 text-green-600" />
+                    <span>{corretor.contratos} convertidos</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Users className="h-4 w-4 text-blue-600" />
+                    <span>{corretor.emAtendimento} atendendo</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className={corretor.aguardando >= 20 ? "text-red-600 font-semibold" : "text-yellow-600 font-medium"}>
+                      {corretor.aguardando} aguardando
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <UserX className="h-4 w-4 text-red-600" />
+                    <span>{corretor.perdidos} perdidos</span>
+                  </div>
+                  <div className="flex items-center gap-1 col-span-2">
+                    <span className="text-muted-foreground">
+                      Taxa de conversão: {corretor.taxaConversao}%
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Filtros */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Filter className="h-5 w-5" />
+              Filtros
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {/* Campo de Busca */}
+            <div className="mb-6 space-y-2">
+              <label className="text-sm font-medium">Buscar Lead</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Nome, telefone ou email..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+              {/* Corretor */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Corretor</label>
+                <Select 
+                  value={corretorId?.toString() || "all"} 
+                  onValueChange={(v) => setCorretorId(v === "all" ? undefined : parseInt(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todos os corretores" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os corretores</SelectItem>
+                    {corretores?.map((corretor) => (
+                      <SelectItem key={corretor.id} value={corretor.id.toString()}>
+                        {corretor.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Status */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Status</label>
+                <Select 
+                  value={status || "all"} 
+                  onValueChange={(v) => setStatus(v === "all" ? undefined : v as LeadStatus)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todos os status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os status</SelectItem>
+                    {Object.entries(statusLabels).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Data Início */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Data Início</label>
+                <input
+                  type="date"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={dataInicio}
+                  onChange={(e) => setDataInicio(e.target.value)}
+                />
+              </div>
+
+              {/* Data Fim */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Data Fim</label>
+                <input
+                  type="date"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={dataFim}
+                  onChange={(e) => setDataFim(e.target.value)}
+                />
+              </div>
+
+              {/* Botão Limpar */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">&nbsp;</label>
+                <Button variant="outline" className="w-full" onClick={clearFilters}>
+                  Limpar Filtros
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Tabela de Leads */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Leads</CardTitle>
+            <CardDescription>
+              {totalLeads} lead(s) no total {searchTerm && `• ${filteredLeads.length} encontrado(s) na busca`}
+              {selectedLeads.length > 0 && ` • ${selectedLeads.length} selecionado(s)`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loadingLeads ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : filteredLeads.length > 0 ? (
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">
+                        <Checkbox
+                          checked={filteredLeads.length > 0 && selectedLeads.length === filteredLeads.length}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </TableHead>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Corretor</TableHead>
+                      <TableHead>Contato</TableHead>
+                      <TableHead>Status</TableHead>
+                       <TableHead>Projeto</TableHead>
+                       <TableHead>⏱ Timer</TableHead>
+                       <TableHead>Data Criação</TableHead>
+                       <TableHead>Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredLeads.map((lead, index) => (
+                      <TableRow key={lead.id} className={`${
+                        selectedLeads.includes(lead.id) ? "bg-muted/50" : ""
+                      } ${lead.origemWebhook ? 'bg-red-50/30 border-l-4 border-l-red-500' : ''}`}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedLeads.includes(lead.id)}
+                            onCheckedChange={(checked, event) => {
+                              const shiftKey = (event as React.MouseEvent)?.shiftKey || false;
+                              toggleSelectLead(lead.id, index, shiftKey);
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            {lead.nome}
+                            {lead.origemWebhook && (
+                              <Badge className="bg-red-600 hover:bg-red-700 text-white text-xs">
+                                🔥 ADS URGENTE
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{lead.corretorNome || "-"}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            {lead.telefone && (
+                              <div className="flex items-center gap-1 text-sm">
+                                <Phone className="h-3 w-3" />
+                                {lead.telefone}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-5 w-5 p-0 ml-1 bg-green-50 hover:bg-green-100 text-green-700"
+                                  onClick={() => {
+                                    window.open(gerarLinkWhatsApp(lead.telefone || '', lead.nome), '_blank');
+                                  }}
+                                >
+                                  <MessageCircle className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            )}
+                            {lead.email && (
+                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                <Mail className="h-3 w-3" />
+                                {lead.email}
+                              </div>
+                            )}
+                            {lead.faixaRenda && (
+                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                <span className="font-medium">Renda:</span>
+                                {lead.faixaRenda}
+                              </div>
+                            )}
+                            {lead.prefereContatoPor && (
+                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                <span className="font-medium">Contato:</span>
+                                {lead.prefereContatoPor}
+                              </div>
+                            )}
+                            {lead.finalidadeImovel && (
+                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                <span className="font-medium">Finalidade:</span>
+                                {lead.finalidadeImovel}
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={statusColors[lead.status as LeadStatus] || ""}>
+                            {statusLabels[lead.status as LeadStatus] || lead.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{lead.projectNome || "-"}</TableCell>
+                        <TableCell>
+                          <TimerLead
+                            timestampRecebimento={lead.timestampRecebimento}
+                            timerAtivo={lead.timerAtivo ?? false}
+                            origem={lead.origem}
+                            nomeCliente={lead.nome}
+                            leadId={lead.id}
+                            showProgress={true}
+                            isCorretor={false}
+                            ultimaInteracao={lead.ultimaInteracao}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Calendar className="h-3 w-3" />
+                            {lead.createdAt 
+                              ? new Date(lead.createdAt).toLocaleString('pt-BR', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })
+                              : "-"
+                            }
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <TransferirLeadButton leadId={lead.id} leadNome={lead.nome} corretores={corretores || []} onSuccess={() => { refetchLeads(); refetchEstatisticas(); }} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Users className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-lg font-medium">Nenhum lead encontrado</p>
+                <p className="text-sm text-muted-foreground">
+                  Ajuste os filtros para ver os leads
+                </p>
+              </div>
+            )}
+          </CardContent>
+          
+          {/* Controles de paginação */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-6 py-4 border-t">
+              <div className="text-sm text-muted-foreground">
+                Mostrando {filteredLeads.length} de {totalLeads} leads (Página {currentPage} de {totalPages})
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                >
+                  Primeira
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Anterior
+                </Button>
+                <span className="text-sm px-4">
+                  {currentPage} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Próxima
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                >
+                  Última
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Dialog de confirmação de exclusão */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir {selectedLeads.length} lead(s)?
+              Esta ação não pode ser desfeita. Todo o histórico de interações
+              também será excluído.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      
+      {/* Dialog de transferência em lote */}
+      <TransferirEmLoteDialog
+        open={transferirEmLoteDialog}
+        onOpenChange={setTransferirEmLoteDialog}
+        leadIds={selectedLeads}
+        onSuccess={() => {
+          refetchLeads();
+          refetchEstatisticas();
+          setSelectedLeads([]);
+        }}
+      />
+    </DashboardLayout>
+  );
+}
