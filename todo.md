@@ -5570,3 +5570,8 @@
 - [x] Corrigir timerSound.ts: adicionar playLembrete() e corrigir contagem de beeps
 - [x] Corrigir timezone.ts: usar inicioDoDiaHoje() na função getRankingPorPeriodo
 - [x] Estado final: 700 testes passando, 15 falhas não corrigíveis (credenciais externas + dados de produção)
+
+## Features Importadas do seu-metro-crm (Mai/2026)
+
+- [x] Oferta Ativa com Kanban: 4 novas tabelas (oferta_ativa, item_oferta_ativa, sessao_oferta, atribuicao_sessao), schema, migration SQL, router ofertaAtiva.ts, páginas OfertaAtiva/NovaOfertaAtiva/KanbanOfertaAtiva/SessoesOferta, rotas no App.tsx, menus no DashboardLayout, 7 testes passando
+- [x] Links Úteis: 2 novas tabelas (links_uteis, acessos_links_uteis), campo acessaLinksUteis na tabela users, schema, migration SQL, router linksUteis.ts, página LinksUteis, rotas no App.tsx, menus no DashboardLayout, 7 testes passando

@@ -37,7 +37,8 @@ import {
   UserCheck, UserX, Circle, Trash2, ChevronDown, Tv, FolderOpen,
   UserCog, Import, Home, Clock, CalendarCheck, Sun, Moon, Calendar,
   FileText, MessageCircle, Link2, Activity, Lock, ArrowRightLeft, Database, Trash,
-  Shield, Briefcase, Calculator, Phone, DollarSign, Zap, AlertTriangle, Bot
+  Shield, Briefcase, Calculator, Phone, DollarSign, Zap, AlertTriangle, Bot,
+  Megaphone, ExternalLink
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
@@ -84,6 +85,8 @@ const menuGroups = [
       { icon: Bell, label: "Notificações", path: "/notificacoes", roles: ["user", "corretor"], showBadge: true },
       { icon: Zap, label: "Modo Blitz", path: "/modo-blitz", roles: ["corretor"] },
       { icon: BookOpen, label: "Scripts de Vendas", path: "/scripts" },
+      { icon: Megaphone, label: "Oferta Ativa", path: "/oferta-ativa" },
+      { icon: ExternalLink, label: "Links Úteis", path: "/links-uteis" },
     ],
   },
   {
@@ -190,6 +193,8 @@ const menuGroupsCorretor = [
       { icon: Calendar, label: "Minha Agenda", path: "/minha-agenda" },
       { icon: FileText, label: "Propostas", path: "/propostas" },
       { icon: BookOpen, label: "Scripts de Vendas", path: "/scripts" },
+      { icon: Megaphone, label: "Oferta Ativa", path: "/oferta-ativa" },
+      { icon: ExternalLink, label: "Links Úteis", path: "/links-uteis" },
     ],
   },
   {
@@ -244,6 +249,8 @@ const menuGroupsGestor = [
       { icon: Users, label: "Todos os Leads", path: "/leads" },
       { icon: CalendarCheck, label: "Agendamentos", path: "/agendamentos" },
       { icon: BookOpen, label: "Scripts de Vendas", path: "/scripts" },
+      { icon: Megaphone, label: "Oferta Ativa", path: "/oferta-ativa" },
+      { icon: ExternalLink, label: "Links Úteis", path: "/links-uteis" },
     ],
   },
   {
@@ -267,11 +274,14 @@ const menuGroupsGestor = [
       { icon: FileText, label: "Tabelões", path: "/gerenciar-tabeloes" },
       { icon: UserCheck, label: "Aprovar Projetos", path: "/aprovar-projetos" },
       { icon: Settings, label: "Configurações", path: "/configuracoes" },
-      { icon: MessageCircle, label: "FAQ do Chatbot", path: "/gerenciar-faq" },
+            { icon: MessageCircle, label: "FAQ do Chatbot", path: "/gerenciar-faq" },
+      { icon: Megaphone, label: "Oferta Ativa", path: "/oferta-ativa" },
+      { icon: Megaphone, label: "Sessões de Oferta", path: "/sessoes-oferta" },
+      { icon: ExternalLink, label: "Links Úteis", path: "/links-uteis" },
+      { icon: Settings, label: "Gerenciar Links", path: "/gerenciar-links-uteis" },
     ],
   },
 ];
-
 // Menu para admin e superintendente — 5 grupos, ~18 itens
 const menuGroupsAdmin = [
   {
@@ -336,11 +346,14 @@ const menuGroupsAdmin = [
       { icon: Settings, label: "Templates Comissão", path: "/templates-comissao" },
       { icon: Trash2, label: "Lixeira", path: "/lixeira" },
       { icon: Settings, label: "Configurações", path: "/configuracoes" },
-      { icon: MessageCircle, label: "FAQ do Chatbot", path: "/gerenciar-faq" },
+            { icon: MessageCircle, label: "FAQ do Chatbot", path: "/gerenciar-faq" },
+      { icon: Megaphone, label: "Oferta Ativa", path: "/oferta-ativa" },
+      { icon: Megaphone, label: "Sessões de Oferta", path: "/sessoes-oferta" },
+      { icon: ExternalLink, label: "Links Úteis", path: "/links-uteis" },
+      { icon: Settings, label: "Gerenciar Links", path: "/gerenciar-links-uteis" },
     ],
   },
 ];
-
 // Menu para superintendente — visão da equipe, sem distribuição ou sistema
 // Hierarquia: ADMIN → SUPT → Gestores → Corretores
 const menuGroupsSuperintendente = [

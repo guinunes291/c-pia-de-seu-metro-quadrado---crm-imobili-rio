@@ -34,6 +34,8 @@ import { propostasRouter } from "./routers/propostas";
 import { meuNegocioRouter } from "./routers/meuNegocio";
 import { relatorioDiarioRouter } from "./routers/relatorioDiario";
 import { scriptsRouter } from "./routers/scripts";
+import { ofertaAtivaRouter } from "./routers/ofertaAtiva";
+import { linksUteisRouter } from "./routers/linksUteis";
 
 // ============================================================================
 // HELPERS E MIDDLEWARES
@@ -360,6 +362,16 @@ export const appRouter = router({
   // ANALYTICS (extraído para server/routers/analytics.ts)
   // ============================================================================
   analytics: analyticsRouter,
+
+  // ============================================================================
+  // OFERTA ATIVA (extraído para server/routers/ofertaAtiva.ts)
+  // ============================================================================
+  ofertaAtiva: ofertaAtivaRouter,
+
+  // ============================================================================
+  // LINKS ÚTEIS (extraído para server/routers/linksUteis.ts)
+  // ============================================================================
+  linksUteis: linksUteisRouter,
 
   // ============================================================================
   // CONSTRUTORAS (extraído para server/routers/construtoras.ts)

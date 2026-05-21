@@ -68,6 +68,8 @@ export const users = mysqlTable("users", {
   
   // Sistema de Equipes
   equipeId: int("equipeId"), // ID da equipe (para corretores e gestores)
+  // Permissões especiais
+  acessaLinksUteis: boolean("acessaLinksUteis").default(false).notNull(),
   
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -2579,3 +2581,110 @@ export const whatsappLogs = mysqlTable("whatsapp_logs", {
 }));
 export type WhatsappLog = typeof whatsappLogs.$inferSelect;
 export type InsertWhatsappLog = typeof whatsappLogs.$inferInsert;
+
+// ============================================================================
+// OFERTA ATIVA — Sessões de oferta e Kanban de leads
+// ============================================================================
+export type FiltrosOferta = {
+  status?: string[];
+  temperatura?: string[];
+  projetoId?: number[];
+  faixaRenda?: string[];
+  origem?: string[];
+  diasSemContatoMin?: number;
+  diasSemContatoMax?: number;
+  semInteracaoHaDias?: number;
+};
+export const sessaoOferta = mysqlTable("sessao_oferta", {
+  id: int("id").autoincrement().primaryKey(),
+  nome: varchar("nome", { length: 255 }).notNull(),
+  tipo: mysqlEnum("tipo", ["terca", "quinta", "avulsa"]).default("avulsa").notNull(),
+  dataHora: timestamp("dataHora").notNull(),
+  criadoPorId: int("criadoPorId").notNull(),
+  status: mysqlEnum("status", ["agendada", "em_andamento", "concluida"]).default("agendada").notNull(),
+  descricao: text("descricao"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type SessaoOferta = typeof sessaoOferta.$inferSelect;
+export type InsertSessaoOferta = typeof sessaoOferta.$inferInsert;
+
+export const ofertaAtiva = mysqlTable("oferta_ativa", {
+  id: int("id").autoincrement().primaryKey(),
+  nome: varchar("nome", { length: 255 }).notNull(),
+  descricao: text("descricao"),
+  corretorId: int("corretorId"),
+  criadoPorId: int("criadoPorId").notNull(),
+  sessaoId: int("sessaoId"),
+  status: mysqlEnum("status", ["rascunho", "ativa", "concluida", "arquivada"]).default("ativa").notNull(),
+  filtros: json("filtros").$type<FiltrosOferta>().notNull().default({}),
+  totalLeads: int("totalLeads").default(0).notNull(),
+  totalContatados: int("totalContatados").default(0).notNull(),
+  totalAvancados: int("totalAvancados").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type OfertaAtiva = typeof ofertaAtiva.$inferSelect;
+export type InsertOfertaAtiva = typeof ofertaAtiva.$inferInsert;
+
+export const itemOfertaAtiva = mysqlTable("item_oferta_ativa", {
+  id: int("id").autoincrement().primaryKey(),
+  ofertaId: int("ofertaId").notNull(),
+  leadId: int("leadId").notNull(),
+  statusKanban: mysqlEnum("statusKanban", [
+    "ofertar", "tratando", "agendou", "sem_retorno", "perdido",
+  ]).default("ofertar").notNull(),
+  agendamentoId: int("agendamentoId"),
+  observacao: text("observacao"),
+  contatadoEm: timestamp("contatadoEm"),
+  ordem: int("ordem").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  itemOfertaAtivaOfertaIdx: index("item_oferta_ativa_oferta_idx").on(table.ofertaId),
+  itemOfertaAtivaLeadIdx: index("item_oferta_ativa_lead_idx").on(table.leadId),
+}));
+export type ItemOfertaAtiva = typeof itemOfertaAtiva.$inferSelect;
+export type InsertItemOfertaAtiva = typeof itemOfertaAtiva.$inferInsert;
+
+export const atribuicaoSessao = mysqlTable("atribuicao_sessao", {
+  id: int("id").autoincrement().primaryKey(),
+  sessaoId: int("sessaoId").notNull(),
+  corretorId: int("corretorId").notNull(),
+  ofertaId: int("ofertaId"),
+  status: mysqlEnum("status", ["pendente", "em_andamento", "concluida"]).default("pendente").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type AtribuicaoSessao = typeof atribuicaoSessao.$inferSelect;
+export type InsertAtribuicaoSessao = typeof atribuicaoSessao.$inferInsert;
+
+// ============================================================================
+// LINKS ÚTEIS — Central de atalhos com controle de acesso granular
+// ============================================================================
+export const linksUteis = mysqlTable("links_uteis", {
+  id: int("id").autoincrement().primaryKey(),
+  titulo: varchar("titulo", { length: 255 }).notNull(),
+  descricao: varchar("descricao", { length: 500 }),
+  url: varchar("url", { length: 1000 }).notNull(),
+  categoria: varchar("categoria", { length: 100 }).notNull(),
+  status: mysqlEnum("status", ["ativo", "inativo"]).default("ativo").notNull(),
+  criadoPorId: int("criadoPorId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  linksUteisStatusIdx: index("links_uteis_status_idx").on(table.status),
+  linksUteisCategoriaIdx: index("links_uteis_categoria_idx").on(table.categoria),
+}));
+export type LinkUtil = typeof linksUteis.$inferSelect;
+export type InsertLinkUtil = typeof linksUteis.$inferInsert;
+
+export const acessosLinksUteis = mysqlTable("acessos_links_uteis", {
+  id: int("id").autoincrement().primaryKey(),
+  linkId: int("linkId").notNull(),
+  corretorId: int("corretorId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  acessosLinkIdx: index("acessos_link_idx").on(table.linkId),
+  acessosCorretorIdx: index("acessos_corretor_idx").on(table.corretorId),
+  acessosDataIdx: index("acessos_data_idx").on(table.createdAt),
+}));
+export type AcessoLinkUtil = typeof acessosLinksUteis.$inferSelect;
+export type InsertAcessoLinkUtil = typeof acessosLinksUteis.$inferInsert;

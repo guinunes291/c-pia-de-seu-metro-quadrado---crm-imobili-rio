@@ -74,6 +74,12 @@ import MinhaEvolucao from "@/pages/meu-negocio/MinhaEvolucao";
 import ComoAvaliarMeuNegocio from "@/pages/meu-negocio/ComoAvaliarMeuNegocio";
 import ModeFoco from "@/pages/meu-negocio/ModeFoco";
 import RelatorioDiarioCorretor from "@/pages/meu-negocio/RelatorioDiarioCorretor";
+import OfertaAtiva from "@/pages/OfertaAtiva";
+import NovaOfertaAtiva from "@/pages/NovaOfertaAtiva";
+import KanbanOfertaAtiva from "@/pages/KanbanOfertaAtiva";
+import SessoesOferta from "@/pages/SessoesOferta";
+import LinksUteis from "@/pages/LinksUteis";
+import GerenciarLinksUteis from "@/pages/GerenciarLinksUteis";
 import { AlertasNotification } from "./components/AlertasNotification";
 import { CorretorNotifications } from "./components/CorretorNotifications";
 
@@ -147,6 +153,15 @@ function Router() {
       <Route path="/meu-negocio/como-avaliar" component={ComoAvaliarMeuNegocio} />
       <Route path="/meu-negocio/foco" component={ModeFoco} />
       <Route path="/meu-negocio/relatorio-diario">{() => { window.location.replace("/meu-painel"); return null; }}</Route>
+
+      {/* Oferta Ativa */}
+      <Route path="/oferta-ativa" component={OfertaAtiva} />
+      <Route path="/oferta-ativa/nova" component={NovaOfertaAtiva} />
+      <Route path="/oferta-ativa/:id" component={KanbanOfertaAtiva} />
+      <Route path="/sessoes-oferta" component={SessoesOferta} />
+      {/* Links Úteis */}
+      <Route path="/links-uteis" component={LinksUteis} />
+      <Route path="/gerenciar-links-uteis" component={GerenciarLinksUteis} />
 
       {/* Rotas Públicas */}
       <Route path="/agendar/:token" component={AgendamentoPublico} />
