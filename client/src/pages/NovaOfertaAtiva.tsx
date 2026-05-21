@@ -134,14 +134,14 @@ export default function NovaOfertaAtiva() {
               <div>
                 <Label>Corretor destinatário</Label>
                 <Select
-                  value={selectedCorretorId?.toString() ?? ""}
-                  onValueChange={(v) => setSelectedCorretorId(v ? Number(v) : undefined)}
+                  value={selectedCorretorId?.toString() ?? "all"}
+                  onValueChange={(v) => setSelectedCorretorId(v === "all" ? undefined : Number(v))}
                 >
                   <SelectTrigger className="mt-1">
                     <SelectValue placeholder="Todos / minha carteira" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todos os leads</SelectItem>
+                    <SelectItem value="all">Todos os leads</SelectItem>
                     {(corretores as any[]).map((c: any) => (
                       <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
                     ))}
