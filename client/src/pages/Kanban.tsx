@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { normalizeSearch } from "@/lib/utils";
+import { normalizeSearch, getSlaStatus, formatTimeAgo } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { gerarLinkWhatsApp } from "@/lib/whatsapp";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -314,7 +314,16 @@ export default function Kanban() {
                       <div className="flex items-start gap-2">
                         <GripVertical className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{lead.nome}</p>
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <p className="font-medium truncate">{lead.nome}</p>
+                            {/* SLA indicator */}
+                            {(() => {
+                              const sla = getSlaStatus((lead as any).ultimaInteracao || lead.createdAt);
+                              if (sla === 'critical') return <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" title="SLA crítico (>48h sem contato)" />;
+                              if (sla === 'warning') return <span className="w-2 h-2 rounded-full bg-yellow-400 shrink-0" title="SLA atenção (24-48h)" />;
+                              return null;
+                            })()}
+                          </div>
                           
                           {lead.telefone && (
                             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">

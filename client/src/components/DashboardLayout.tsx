@@ -1142,7 +1142,7 @@ function DashboardContent({
           {/* Overlay de bloqueio se não atingiu follow-ups E perfil está completo E não está em páginas liberadas (APENAS CORRETORES) */}
           {/* Quando perfil está incompleto, NÃO mostra overlay de follow-up para permitir acesso à página de configurações */}
           {/* Só mostra overlay se o corretor ACEITOU fazer follow-ups (escolhaDiariaFeita && aceitouFollowUp === true) */}
-          {isCorretor && !desbloqueado && !perfilIncompleto && escolhaDiariaFeita && aceitouFollowUp === true && location !== "/tarefas-do-dia" && location !== "/modo-blitz" && location !== "/configuracoes" && (
+          {isCorretor && !desbloqueado && !perfilIncompleto && escolhaDiariaFeita && aceitouFollowUp === true && location !== "/tarefas-do-dia" && location !== "/modo-blitz" && location !== "/configuracoes" && location !== "/dashboard" && location !== "/performance" && (
             <LockedTabOverlay
               total={total}
               concluidos={concluidos}

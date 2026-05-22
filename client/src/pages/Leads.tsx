@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import { getSlaStatus, calcLeadScore, formatTimeAgo } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
 import {
@@ -1256,12 +1257,12 @@ export default function Leads() {
                     const estaParado = diasParado !== null && diasParado >= 3;
 
                     return (
-                      <TableRow key={lead.id} className={
+                      <TableRow key={lead.id} className={`group ${
                         lead.origemWebhook ? 'bg-red-50/30' :
                         estaParado && diasParado! >= 15 ? 'bg-red-50/20 dark:bg-red-950/10' :
                         estaParado && diasParado! >= 7  ? 'bg-orange-50/20 dark:bg-orange-950/10' :
                         estaParado ? 'bg-yellow-50/20 dark:bg-yellow-950/10' : ''
-                      }>
+                      }`}>
                         {isGestor && (
                           <TableCell>
                             <input
@@ -1280,13 +1281,37 @@ export default function Leads() {
                           </TableCell>
                         )}
                         <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            {lead.nome}
-                            {lead.origemWebhook && (
-                              <Badge className="bg-red-600 hover:bg-red-700 text-white text-xs">
-                                🔥 ADS
-                              </Badge>
-                            )}
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-2">
+                              {lead.nome}
+                              {lead.origemWebhook && (
+                                <Badge className="bg-red-600 hover:bg-red-700 text-white text-xs">
+                                  🔥 ADS
+                                </Badge>
+                              )}
+                              {/* SLA indicator */}
+                              {(() => {
+                                const sla = getSlaStatus(lead.ultimaInteracao || lead.updatedAt);
+                                const score = calcLeadScore({ status: lead.status, temperatura: lead.temperatura, updatedAt: lead.ultimaInteracao || lead.updatedAt });
+                                if (sla === 'critical') return <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" title="SLA crítico (>48h)" />;
+                                if (sla === 'warning') return <span className="inline-block w-2 h-2 rounded-full bg-yellow-400" title="SLA atenção (24-48h)" />;
+                                return null;
+                              })()}
+                            </div>
+                            {/* Quick actions on hover */}
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {lead.telefone && (
+                                <>
+                                  <a href={`tel:${lead.telefone}`} onClick={(e) => e.stopPropagation()} className="text-xs text-muted-foreground hover:text-green-700 flex items-center gap-0.5 transition-colors" title="Ligar">
+                                    <Phone className="h-3 w-3" /> Ligar
+                                  </a>
+                                  <span className="text-muted-foreground/40">·</span>
+                                  <a href={`https://wa.me/55${lead.telefone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs text-muted-foreground hover:text-green-700 flex items-center gap-0.5 transition-colors" title="WhatsApp">
+                                    <MessageCircle className="h-3 w-3" /> WA
+                                  </a>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell>

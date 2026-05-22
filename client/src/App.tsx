@@ -80,6 +80,8 @@ import KanbanOfertaAtiva from "@/pages/KanbanOfertaAtiva";
 import SessoesOferta from "@/pages/SessoesOferta";
 import LinksUteis from "@/pages/LinksUteis";
 import GerenciarLinksUteis from "@/pages/GerenciarLinksUteis";
+import DashboardPage from "@/features/dashboard/DashboardPage";
+import PerformancePage from "@/features/performance/PerformancePage";
 import { AlertasNotification } from "./components/AlertasNotification";
 import { CorretorNotifications } from "./components/CorretorNotifications";
 
@@ -89,7 +91,8 @@ function Router() {
   return (
     <Switch>
       <Route path={"/"} component={Home} />
-      <Route path={"/dashboard"} component={Dashboard} />
+      <Route path={"/dashboard"} component={DashboardPage} />
+      <Route path={"/performance"} component={PerformancePage} />
       <Route path="/projetos" component={Projetos} />
       <Route path="/aprovar-projetos" component={AprovarProjetos} />
       <Route path="/leads" component={Leads} />
