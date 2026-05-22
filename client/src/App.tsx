@@ -78,6 +78,7 @@ import OfertaAtiva from "@/pages/OfertaAtiva";
 import NovaOfertaAtiva from "@/pages/NovaOfertaAtiva";
 import KanbanOfertaAtiva from "@/pages/KanbanOfertaAtiva";
 import SessoesOferta from "@/pages/SessoesOferta";
+import DetalhesSessaoOferta from "@/pages/DetalhesSessaoOferta";
 import LinksUteis from "@/pages/LinksUteis";
 import GerenciarLinksUteis from "@/pages/GerenciarLinksUteis";
 import DashboardPage from "@/features/dashboard/DashboardPage";
@@ -162,6 +163,7 @@ function Router() {
       <Route path="/oferta-ativa/nova" component={NovaOfertaAtiva} />
       <Route path="/oferta-ativa/:id" component={KanbanOfertaAtiva} />
       <Route path="/sessoes-oferta" component={SessoesOferta} />
+      <Route path="/sessoes-oferta/:id" component={DetalhesSessaoOferta} />
       {/* Links Úteis */}
       <Route path="/links-uteis" component={LinksUteis} />
       <Route path="/gerenciar-links-uteis" component={GerenciarLinksUteis} />
