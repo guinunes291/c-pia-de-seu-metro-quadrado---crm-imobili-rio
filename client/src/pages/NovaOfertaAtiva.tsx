@@ -143,7 +143,7 @@ export default function NovaOfertaAtiva() {
                   <SelectContent>
                     <SelectItem value="all">Todos os leads</SelectItem>
                     {(corretores as any[]).map((c: any) => (
-                      <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                      <SelectItem key={c.id} value={String(c.id)}>{c.nome || c.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

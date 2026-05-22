@@ -230,7 +230,9 @@ export const ofertaAtivaRouter = router({
       if (!drizzleDb) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'DB indisponível' });
 
       const isGestor = isGestorLevel(ctx.user.role);
-      const targetCorretorId = isGestor ? (input.corretorId ?? ctx.user.id) : ctx.user.id;
+      // Gestor sem corretor selecionado = sem filtro por corretor (todos os leads da equipe)
+      // Corretor = sempre filtra pela própria carteira
+      const targetCorretorId = isGestor ? input.corretorId : ctx.user.id;
 
       const filtros: FiltrosOferta = input.filtros;
       const leadIds = await buildLeadsFromFiltros(drizzleDb, filtros, targetCorretorId);
