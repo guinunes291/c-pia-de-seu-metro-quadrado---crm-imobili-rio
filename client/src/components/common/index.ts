@@ -7,3 +7,5 @@ export { SLAProgressBar } from "./SLAProgressBar";
 export { EmptyState } from "./EmptyState";
 export { LoadingState } from "./LoadingState";
 export { ConfirmDialog } from "./ConfirmDialog";
+export { DataTable } from "./DataTable";
+export type { ColumnDef } from "./DataTable";

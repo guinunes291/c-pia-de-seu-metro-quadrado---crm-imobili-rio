@@ -75,6 +75,7 @@ import { DateRangeFilter, DateRangePreset } from "@/components/DateRangeFilter";
 import { getDateRangeFromPreset } from "@/lib/dateRangeUtils";
 import { ExecutandoComIA } from "@/components/ExecutandoComIA";
 import { CarteiraAtivaQuickButton } from "@/pages/CarteiraAtiva";
+import { useLeadsFilters } from "@/features/leads/hooks/useLeadsFilters";
 
 const statusLabels: Record<string, string> = {
   novo: "Novo",
@@ -124,36 +125,53 @@ const origemLabels: Record<string, string> = {
 };
 
 export default function Leads() {
-  // Estado de paginação
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(50);
-  
-  // Estados de filtros
-  const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [projectFilter, setProjectFilter] = useState<string>("all");
-  const [origemFilter, setOrigemFilter] = useState<string>("all");
-  const [corretorFilter, setCorretorFilter] = useState<string>("all");
-  const [temperaturaFilter, setTemperaturaFilter] = useState<string>("all"); // Fase 2
-  const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>("all");
+  // Filtros sincronizados com URL — sobrevivem a reload e podem ser compartilhados
+  const { filters, setFilters } = useLeadsFilters();
+  const pageSize = 50;
+
+  // Busca local com debounce — atualiza URL após 500ms
+  const [localSearch, setLocalSearch] = useState(filters.search);
+  useEffect(() => {
+    const timer = setTimeout(() => setFilters({ search: localSearch }), 500);
+    return () => clearTimeout(timer);
+  }, [localSearch]);
+
+  // Sincroniza campo de busca se a URL mudar externamente (ex: reset de filtros)
+  useEffect(() => {
+    setLocalSearch(filters.search);
+  }, [filters.search]);
+
+  // Aliases para compatibilidade com o código existente
+  const searchTerm = localSearch;
+  const setSearchTerm = setLocalSearch;
+  const statusFilter = filters.status || "all";
+  const setStatusFilter = (v: string) => setFilters({ status: v === "all" ? "" : v });
+  const projectFilter = filters.projectId || "all";
+  const setProjectFilter = (v: string) => setFilters({ projectId: v === "all" ? "" : v });
+  const origemFilter = filters.origem || "all";
+  const setOrigemFilter = (v: string) => setFilters({ origem: v === "all" ? "" : v });
+  const corretorFilter = filters.corretorId || "all";
+  const setCorretorFilter = (v: string) => setFilters({ corretorId: v === "all" ? "" : v });
+  const temperaturaFilter = filters.temperatura || "all";
+  const setTemperaturaFilter = (v: string) => setFilters({ temperatura: v === "all" ? "" : v });
+  const dateRangePreset = (filters.datePreset || "all") as DateRangePreset;
+  const currentPage = filters.page;
+  const setCurrentPage = (p: number) => setFilters({ page: p });
+  const viewMode = filters.view;
+  const setViewMode = (v: "cards" | "table") => setFilters({ view: v });
+
+  // Custom date range (não persistido em URL — edge case)
   const [customDateStart, setCustomDateStart] = useState<Date | undefined>();
   const [customDateEnd, setCustomDateEnd] = useState<Date | undefined>();
-  
+
   // Calcular datas baseado no preset
   const { dataInicio: dataInicioFilter, dataFim: dataFimFilter } = getDateRangeFromPreset(
     dateRangePreset,
     customDateStart,
     customDateEnd
   );
-  
-  // Debounce para busca (evita queries excessivas)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchTerm);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
+
+  const debouncedSearch = filters.search;
   
   // Query com filtros server-side (usa debouncedSearch)
   const { data: leadsData, isLoading, refetch } = trpc.leads.list.useQuery({ 
@@ -209,8 +227,7 @@ export default function Leads() {
   }, [leads]);
   const [interactionDialog, setInteractionDialog] = useState(false);
   const [atribuirDialog, setAtribuirDialog] = useState(false);
-  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
-  
+
   // Estados para seleção múltipla
   const [selectedLeadIds, setSelectedLeadIds] = useState<number[]>([]);
   const [transferirEmLoteDialog, setTransferirEmLoteDialog] = useState(false);
@@ -590,11 +607,6 @@ export default function Leads() {
     }
   };
 
-  // Resetar para página 1 quando filtros mudarem
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [debouncedSearch, statusFilter, projectFilter, origemFilter]);
-  
   // Usar leads diretamente do backend (já filtrados)
   const filteredLeads = leads;
 

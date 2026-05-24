@@ -88,6 +88,28 @@ export const leadsRouter = router({
       return await db.getNewWebhookLeadsSince(corretorId, new Date(input.since));
     }),
 
+  // Kanban: retorna todos os leads ativos em uma única query, agrupados por status
+  kanban: protectedProcedure
+    .query(async ({ ctx }) => {
+      const { getCorretoresIdsParaFiltro } = await import('../equipes');
+      const corretoresIds = await getCorretoresIdsParaFiltro(ctx.user.id, ctx.user.role);
+      const corretorId = corretoresIds?.length === 1 ? corretoresIds[0] : undefined;
+
+      const result = await db.getAllLeads({
+        limit: 999999,
+        corretorId,
+        corretoresIds,
+      });
+
+      // Agrupar por status no servidor para evitar 9 queries no cliente
+      const byStatus: Record<string, typeof result.leads> = {};
+      for (const lead of result.leads) {
+        if (!byStatus[lead.status]) byStatus[lead.status] = [];
+        byStatus[lead.status].push(lead);
+      }
+      return byStatus;
+    }),
+
   metricasDiarias: corretorProcedure
     .query(async ({ ctx }) => {
       const corretorId = ctx.user.role === 'corretor' ? ctx.user.id : null;

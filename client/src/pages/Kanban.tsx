@@ -51,34 +51,14 @@ export default function Kanban() {
     col => col.id !== 'novo' && col.id !== 'aguardando_atendimento'
   );
   
-  // Buscar leads separadamente por status para garantir que TODOS os leads de cada coluna apareçam
-  // Cada query filtra por status no backend, evitando o problema de limit global
-  const emAtendimento = trpc.leads.list.useQuery({ status: 'em_atendimento', limit: 99999 });
-  const qualificado = trpc.leads.list.useQuery({ status: 'qualificado', limit: 99999 });
-  const agendado = trpc.leads.list.useQuery({ status: 'agendado', limit: 99999 });
-  const visitaRealizada = trpc.leads.list.useQuery({ status: 'visita_realizada', limit: 99999 });
-  const propostaEnviada = trpc.leads.list.useQuery({ status: 'proposta_enviada', limit: 99999 });
-  const analiseCredito = trpc.leads.list.useQuery({ status: 'analise_credito', limit: 99999 });
-  const contratoFechado = trpc.leads.list.useQuery({ status: 'contrato_fechado', limit: 99999 });
-  const posVenda = trpc.leads.list.useQuery({ status: 'pos_venda', limit: 99999 });
-  const perdido = trpc.leads.list.useQuery({ status: 'perdido', limit: 99999 });
+  // Uma única query retorna todos os leads agrupados por status (9x menos requests)
+  const { data: kanbanData, isLoading } = trpc.leads.kanban.useQuery(undefined, {
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+  });
 
-  const queriesByStatus: Record<string, typeof emAtendimento> = {
-    em_atendimento: emAtendimento,
-    qualificado: qualificado,
-    agendado: agendado,
-    visita_realizada: visitaRealizada,
-    proposta_enviada: propostaEnviada,
-    analise_credito: analiseCredito,
-    contrato_fechado: contratoFechado,
-    pos_venda: posVenda,
-    perdido: perdido,
-  };
-  
-  const isLoading = Object.values(queriesByStatus).some(q => q.isLoading);
-  
   const refetchAll = () => {
-    utils.leads.list.invalidate();
+    utils.leads.kanban.invalidate();
   };
   
   // Mutation para atualizar status do lead
@@ -109,10 +89,9 @@ export default function Kanban() {
   // Normaliza o termo de busca: remove acentos, cedilha, hífens, espaços
   const searchNorm = normalizeSearch(searchTerm);
 
-  // Agrupar leads por status usando as queries separadas
+  // Extrair leads do resultado agrupado
   const allLeadsByStatus = visibleColumns.reduce((acc, column) => {
-    const query = queriesByStatus[column.id];
-    acc[column.id] = (query?.data?.leads || []) as Lead[];
+    acc[column.id] = ((kanbanData?.[column.id] || []) as Lead[]);
     return acc;
   }, {} as Record<string, Lead[]>);
 
