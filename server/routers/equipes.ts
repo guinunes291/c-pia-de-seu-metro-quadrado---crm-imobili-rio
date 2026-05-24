@@ -1,29 +1,8 @@
 import { z } from "zod";
 import * as db from "../db";
 import { TRPCError } from "@trpc/server";
-import { protectedProcedure, router } from "../_core/trpc";
-
-// ============================================================================
-// HELPERS E MIDDLEWARES (copiados do routers.ts principal)
-// ============================================================================
-function isGestorLevel(role: string): boolean {
-  return role === 'gestor' || role === 'admin' || role === 'superintendente';
-}
-function isAdminLevel(role: string): boolean {
-  return role === 'admin' || role === 'superintendente';
-}
-const gestorProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (!isGestorLevel(ctx.user.role)) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas gestores podem acessar' });
-  }
-  return next({ ctx });
-});
-const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (!isAdminLevel(ctx.user.role)) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas administradores podem acessar' });
-  }
-  return next({ ctx });
-});
+import { router } from "../_core/trpc";
+import { gestorProcedure, adminProcedure, isGestorLevel, isAdminLevel } from "../_core/rbac";
 
 // ============================================================================
 // ROUTER DE EQUIPES

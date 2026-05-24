@@ -15,13 +15,7 @@ import {
 } from "../../drizzle/schema";
 import { eq, and, gte, lte, sql, desc, between } from "drizzle-orm";
 
-// ============================================================================
-// HELPERS
-// ============================================================================
-
-function isGestorLevel(role: string): boolean {
-  return role === "gestor" || role === "admin" || role === "superintendente";
-}
+import { isGestorLevel } from "../_core/rbac";
 
 // ============================================================================
 // ROUTER

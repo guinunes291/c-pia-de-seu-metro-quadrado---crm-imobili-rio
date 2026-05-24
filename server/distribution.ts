@@ -1,6 +1,6 @@
 import { getDb, notifyLeadDistribuido, countLeadsRecebidosHoje } from "./db";
 import { users, leads, conversionStats, distributionLog, leadEstoque } from "../drizzle/schema";
-import { eq, and, sql, isNull } from "drizzle-orm";
+import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 
 // Configurações de distribuição
 // Regra: corretor elegível quando ≥ 60% dos seus leads foram trabalhados (status != aguardando_atendimento)
@@ -215,22 +215,25 @@ export async function getCorretoresParaRedistribuicao(): Promise<number[]> {
 
   if (todosCorretores.length === 0) return [];
 
-  // Calcular carga atual de cada corretor (leads ativos)
-  const corretoresComCarga: Array<{ id: number; carga: number }> = [];
+  // Buscar carga de todos os corretores em uma única query com GROUP BY
+  const corretorIds = todosCorretores.map((c) => c.id);
+  const cargaRows = await db
+    .select({ corretorId: leads.corretorId, carga: sql<number>`COUNT(*)` })
+    .from(leads)
+    .where(
+      and(
+        inArray(leads.corretorId, corretorIds),
+        eq(leads.naLixeira, false),
+        sql`${leads.status} IN ('aguardando_atendimento', 'em_atendimento')`
+      )
+    )
+    .groupBy(leads.corretorId);
 
-  for (const corretor of todosCorretores) {
-    const [{ total }] = await db
-      .select({ total: sql<number>`COUNT(*)` })
-      .from(leads)
-      .where(
-        and(
-          eq(leads.corretorId, corretor.id),
-          eq(leads.naLixeira, false),
-          sql`${leads.status} IN ('aguardando_atendimento', 'em_atendimento')`
-        )
-      );
-    corretoresComCarga.push({ id: corretor.id, carga: Number(total) });
-  }
+  const cargaMap = new Map(cargaRows.map((r) => [r.corretorId, Number(r.carga)]));
+  const corretoresComCarga = todosCorretores.map((c) => ({
+    id: c.id,
+    carga: cargaMap.get(c.id) ?? 0,
+  }));
 
   // Ordenar por menor carga (distribuição mais justa)
   corretoresComCarga.sort((a, b) => a.carga - b.carga);

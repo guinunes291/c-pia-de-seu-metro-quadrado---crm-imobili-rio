@@ -12,20 +12,9 @@ import {
 import { and, eq, lte, inArray, sql, desc, count } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 
-function isGestorLevel(role: string) {
-  return role === 'gestor' || role === 'admin' || role === 'superintendente';
-}
+import { gestorProcedure, isGestorLevel } from '../_core/rbac';
 
-const corretorProcedure = protectedProcedure.use(({ ctx, next }) => {
-  return next({ ctx });
-});
-
-const gestorProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (!isGestorLevel(ctx.user.role)) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas gestores podem acessar' });
-  }
-  return next({ ctx });
-});
+const corretorProcedure = protectedProcedure;
 
 const FiltrosOfertaSchema = z.object({
   status: z.array(z.string()).optional(),

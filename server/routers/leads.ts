@@ -7,9 +7,7 @@ import { TRPCError } from '@trpc/server';
 import { sendPushNotification } from '../pushNotifications';
 import { sendLeadStatusChangedEvent } from '../metaConversions';
 
-// ============================================================================
-// HELPERS DE ROLE (replicados do routers.ts para independência)
-// ============================================================================
+import { corretorProcedure, gestorProcedure, adminProcedure, adminExportProcedure, isGestorLevel, isAdminLevel } from '../_core/rbac';
 
 // Timer é exclusivo para leads de Facebook ADS
 const _ORIGENS_ADS = ['webhook', 'facebook', 'fb', 'ads'];
@@ -17,42 +15,6 @@ function isLeadOrigemADS(origem: string | null | undefined): boolean {
   if (!origem) return false;
   return _ORIGENS_ADS.some(kw => origem.toLowerCase().includes(kw));
 }
-
-function isGestorLevel(role: string): boolean {
-  return role === 'gestor' || role === 'admin' || role === 'superintendente';
-}
-
-function isAdminLevel(role: string): boolean {
-  return role === 'admin' || role === 'superintendente';
-}
-
-const corretorProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== 'corretor' && !isGestorLevel(ctx.user.role)) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso negado' });
-  }
-  return next({ ctx });
-});
-
-const gestorProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (!isGestorLevel(ctx.user.role)) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas gestores podem acessar' });
-  }
-  return next({ ctx });
-});
-
-const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (!isAdminLevel(ctx.user.role)) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas administradores podem acessar' });
-  }
-  return next({ ctx });
-});
-
-const adminExportProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== 'admin') {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas o administrador principal pode exportar dados' });
-  }
-  return next({ ctx });
-});
 
 // ============================================================================
 // LEADS ROUTER

@@ -56,6 +56,7 @@ import { ContadorLeadsFacebook } from "@/components/ContadorLeadsFacebook";
 import { useSolicitarPermissaoNotificacao } from "@/hooks/useNotificacaoLead";
 import { PushNotificationBanner } from "@/components/PushNotificationBanner";
 import { useLeadEvents } from "@/hooks/useLeadEvents";
+import { CommandPalette } from "@/components/layout/CommandPalette";
 
 // Estrutura de menu agrupado
 const menuGroups = [
@@ -819,16 +820,28 @@ function DashboardContent({
       >
         <SidebarHeader className="p-3 border-b">
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
               <img
                 src="https://files.manuscdn.com/user_upload_by_module/session_file/310419663032188321/nYdEnBpdRXDVWsgt.png"
                 alt="Seu Metro Quadrado"
-                className="h-8 w-8 object-contain"
+                className="h-8 w-8 object-contain flex-shrink-0"
               />
               {!isCollapsed && (
                 <span className="font-semibold text-foreground text-sm">Seu m²</span>
               )}
             </div>
+            {!isCollapsed && (
+              <button
+                onClick={() => {
+                  const event = new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true });
+                  window.dispatchEvent(event);
+                }}
+                title="Busca rápida (Ctrl+K)"
+                className="flex items-center gap-1 rounded-md border bg-muted/50 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted transition-colors flex-shrink-0"
+              >
+                <span>⌘K</span>
+              </button>
+            )}
           </div>
         </SidebarHeader>
 
@@ -1184,6 +1197,9 @@ function DashboardContent({
 
       {/* Modal de onboarding obrigatório (1ª camada de bloqueio) */}
       <ModalOnboardingObrigatorio />
+
+      {/* Command Palette — Cmd+K / Ctrl+K */}
+      <CommandPalette />
     </>
   );
 }

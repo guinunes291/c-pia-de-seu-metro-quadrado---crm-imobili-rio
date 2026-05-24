@@ -5,16 +5,7 @@ import { TRPCError } from '@trpc/server';
 import { objecoesPlaybook } from '../../drizzle/schema';
 import { eq, and, like, or } from 'drizzle-orm';
 
-function isAdminLevel(role: string) {
-  return role === 'admin' || role === 'superintendente';
-}
-
-const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (!isAdminLevel(ctx.user.role)) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas administradores podem gerenciar scripts' });
-  }
-  return next({ ctx });
-});
+import { adminProcedure } from '../_core/rbac';
 
 const CATEGORIAS = [
   'primeiro_contato', 'agendamento', 'pos_visita',

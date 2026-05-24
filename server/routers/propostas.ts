@@ -1,29 +1,8 @@
 import { z } from "zod";
 import * as db from "../db";
 import { TRPCError } from "@trpc/server";
-import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
-
-// ============================================================================
-// HELPERS E MIDDLEWARES
-// ============================================================================
-function isGestorLevel(role: string): boolean {
-  return role === 'gestor' || role === 'admin' || role === 'superintendente';
-}
-function isAdminLevel(role: string): boolean {
-  return role === 'admin' || role === 'superintendente';
-}
-const corretorProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== 'corretor' && !isGestorLevel(ctx.user.role)) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso negado' });
-  }
-  return next({ ctx });
-});
-const gestorProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (!isGestorLevel(ctx.user.role)) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas gestores podem acessar' });
-  }
-  return next({ ctx });
-});
+import { publicProcedure, router } from "../_core/trpc";
+import { corretorProcedure, gestorProcedure, isGestorLevel } from "../_core/rbac";
 
 // ============================================================================
 // ROUTER DE PROPOSTAS

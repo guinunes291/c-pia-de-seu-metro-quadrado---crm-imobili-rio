@@ -2,6 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { corretorProcedure, gestorProcedure, adminProcedure, adminExportProcedure, isGestorLevel, isAdminLevel } from "./_core/rbac";
 import { cacheGetOrSet, CACHE_TTL, dashboardCacheKey } from "./_core/cache";
 import { z } from "zod";
 import * as db from "./db";
@@ -40,46 +41,6 @@ import { linksUteisRouter } from "./routers/linksUteis";
 // ============================================================================
 // HELPERS E MIDDLEWARES
 // ============================================================================
-
-// Helper: verifica se o role tem visão de gestor (gestor, admin, superintendente)
-function isGestorLevel(role: string): boolean {
-  return role === 'gestor' || role === 'admin' || role === 'superintendente';
-}
-
-// Helper: verifica se é admin ou superintendente (acesso total)
-function isAdminLevel(role: string): boolean {
-  return role === 'admin' || role === 'superintendente';
-}
-
-const corretorProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== 'corretor' && !isGestorLevel(ctx.user.role)) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso negado' });
-  }
-  return next({ ctx });
-});
-
-const gestorProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (!isGestorLevel(ctx.user.role)) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas gestores podem acessar' });
-  }
-  return next({ ctx });
-});
-
-// Middleware para admin (apenas admin, não gestor)
-const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (!isAdminLevel(ctx.user.role)) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas administradores podem acessar' });
-  }
-  return next({ ctx });
-});
-
-// Procedure exclusiva para admin real (sem superintendente) - usada para exportação de dados
-const adminExportProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== 'admin') {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas o administrador principal pode exportar dados' });
-  }
-  return next({ ctx });
-});
 
 // Middleware para gestor restrito (apenas sua equipe)
 const gestorRestritoProcedure = protectedProcedure.use(async ({ ctx, next }) => {

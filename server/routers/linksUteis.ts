@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { router, protectedProcedure, gestorProcedure } from '../_core/trpc';
+import { router, protectedProcedure } from '../_core/trpc';
+import { gestorProcedure, isAdminLevel, isGestorLevel } from '../_core/rbac';
 import * as db from '../db';
 import {
   linksUteis as linksUteisTable,
@@ -8,14 +9,6 @@ import {
 } from '../../drizzle/schema';
 import { and, eq, desc, asc } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
-
-function isAdminLevel(role: string) {
-  return role === 'admin' || role === 'superintendente';
-}
-
-function isGestorLevel(role: string) {
-  return role === 'gestor' || role === 'admin' || role === 'superintendente';
-}
 
 export const linksUteisRouter = router({
   list: protectedProcedure
