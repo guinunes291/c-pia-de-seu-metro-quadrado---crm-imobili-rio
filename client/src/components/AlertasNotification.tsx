@@ -19,7 +19,7 @@ export function AlertasNotification() {
   const { data: alertas, refetch } = trpc.alertas.meus.useQuery(
     { apenasNaoLidos: true },
     {
-      refetchInterval: 3 * 60 * 1000, // 3 minutos (reduzido de 45s — alertas não precisam de polling tão agressivo)
+      refetchInterval: 10 * 60 * 1000, // 10 minutos — SSE em useLeadEvents entrega alertas instantaneamente
       refetchOnWindowFocus: true, // Reativado: atualiza ao focar a janela
     }
   );

@@ -9,11 +9,12 @@
  * - Deduplication: skips if an unread alert already exists for the same lead
  *   within the last hour.
  */
-import { and, eq, gt, inArray, ne, isNotNull } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull } from "drizzle-orm";
 import { getDb } from "../db";
 import { leads, alertas, users } from "../../drizzle/schema";
-import { SLA_CONFIG, TERMINAL_STATUSES, calcSlaProgress } from "../../shared/leadStatus";
+import { SLA_CONFIG, calcSlaProgress } from "../../shared/leadStatus";
 import { sendPushNotification } from "../pushNotifications";
+import { notifySSEUser } from "../sseManager";
 
 const SLA_STATUSES = Object.keys(SLA_CONFIG) as string[];
 const DEDUP_WINDOW_MS = 60 * 60 * 1000; // 1 hora entre alertas do mesmo lead
@@ -101,7 +102,10 @@ export async function runSlaCheck(): Promise<{ checked: number; alerted: number 
         lido: false,
       });
 
-      // Push notification to corretor
+      // Push via SSE for instant in-app update
+      notifySSEUser(lead.corretorId, 'alerta', { leadId: lead.id, mensagem });
+
+      // Push notification to corretor (web push for background tabs)
       await sendPushNotification(lead.corretorId, {
         title: isBreached ? "SLA Vencido" : "Atenção: SLA Urgente",
         body: mensagem,

@@ -4879,10 +4879,14 @@ export const appRouter = router({
           mensagem,
           lido: false,
         });
-        
+
+        // Push via SSE for instant in-app notification
+        const { notifySSEUser } = await import('./sseManager');
+        notifySSEUser(input.corretorId, 'alerta', { leadId: input.leadId, mensagem });
+
         return { success: true, duplicata: false };
       }),
-    
+
     // Listar alertas do corretor logado
     meus: protectedProcedure
       .input(z.object({
