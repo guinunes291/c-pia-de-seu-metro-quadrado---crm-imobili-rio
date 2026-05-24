@@ -591,24 +591,21 @@ export const appRouter = router({
         const corretores = await db.getAllCorretores();
         const { inicioDoDiaHoje } = await import('./timezone');
         const hoje = inicioDoDiaHoje();
-        
-        const limites = await Promise.all(corretores.map(async (corretor) => {
-          // Contar leads recebidos hoje
-          const leadsHoje = await db.countLeadsRecebidosHoje(corretor.id, hoje);
-          
-          return {
-            corretorId: corretor.id,
-            nome: corretor.name,
-            email: corretor.email,
-            fotoUrl: corretor.fotoUrl,
-            limiteDiarioLeads: corretor.limiteDiarioLeads || 50,
-            limiteDiarioWebhook: corretor.limiteDiarioWebhook || 10,
-            leadsRecebidosHoje: leadsHoje,
-            status: corretor.status,
-          };
+
+        // Bulk query instead of N per-corretor queries
+        const corretorIds = corretores.map((c) => c.id);
+        const leadsHojeMap = await db.countLeadsRecebidosHojeBulk(corretorIds, hoje);
+
+        return corretores.map((corretor) => ({
+          corretorId: corretor.id,
+          nome: corretor.name,
+          email: corretor.email,
+          fotoUrl: corretor.fotoUrl,
+          limiteDiarioLeads: corretor.limiteDiarioLeads || 50,
+          limiteDiarioWebhook: corretor.limiteDiarioWebhook || 10,
+          leadsRecebidosHoje: leadsHojeMap.get(corretor.id) ?? 0,
+          status: corretor.status,
         }));
-        
-        return limites;
       }),
     
     // Configurar limite diário de distribuição automática
@@ -2456,46 +2453,43 @@ export const appRouter = router({
           corretores = await db.getCorretoresAtivos();
         }
         
-        // Calcular progresso de cada corretor
-        const progressos = await Promise.all(
-          corretores.map(async (corretor) => {
-            // Total de follow-ups do dia
-            const totalFollowUps = await db.getTotalFollowUpsDoDia(corretor.id, hoje, amanha);
-            const total = totalFollowUps.length;
-            
-            // Follow-ups concluídos hoje
-            const concluidos = totalFollowUps.filter(f => {
-              if (!f.ultimaTentativa) return false;
-              const ultimaTentativaDate = new Date(f.ultimaTentativa);
-              return ultimaTentativaDate >= hoje && ultimaTentativaDate < amanha;
-            }).length;
-            
-            // Encontrar horário do último follow-up
-            const ultimoFollowUp = totalFollowUps
-              .filter(f => f.ultimaTentativa)
-              .sort((a, b) => {
-                const dateA = a.ultimaTentativa ? new Date(a.ultimaTentativa).getTime() : 0;
-                const dateB = b.ultimaTentativa ? new Date(b.ultimaTentativa).getTime() : 0;
-                return dateB - dateA;
-              })[0];
-            
-            const percentual = total > 0 ? Math.round((concluidos / total) * 100) : 100;
-            const desbloqueado = total === 0 ? true : percentual >= 40;
-            
-            return {
-              corretorId: corretor.id,
-              corretorNome: corretor.name,
-              corretorEmail: corretor.email,
-              total,
-              concluidos,
-              percentual,
-              desbloqueado,
-              ultimoFollowUp: ultimoFollowUp?.ultimaTentativa || null,
-            };
-          })
-        );
-        
-        // Ordenar por percentual (maior primeiro)
+        // Single bulk query instead of N per-corretor queries
+        const corretorIds = corretores.map((c) => c.id);
+        const followUpsBulkMap = await db.getTotalFollowUpsDoDiaBulk(corretorIds, hoje);
+
+        const progressos = corretores.map((corretor) => {
+          const totalFollowUps = followUpsBulkMap.get(corretor.id) ?? [];
+          const total = totalFollowUps.length;
+
+          const concluidos = totalFollowUps.filter(f => {
+            if (!f.ultimaTentativa) return false;
+            const ultimaTentativaDate = new Date(f.ultimaTentativa);
+            return ultimaTentativaDate >= hoje && ultimaTentativaDate < amanha;
+          }).length;
+
+          const ultimoFollowUp = totalFollowUps
+            .filter(f => f.ultimaTentativa)
+            .sort((a, b) => {
+              const dateA = a.ultimaTentativa ? new Date(a.ultimaTentativa).getTime() : 0;
+              const dateB = b.ultimaTentativa ? new Date(b.ultimaTentativa).getTime() : 0;
+              return dateB - dateA;
+            })[0];
+
+          const percentual = total > 0 ? Math.round((concluidos / total) * 100) : 100;
+          const desbloqueado = total === 0 ? true : percentual >= 40;
+
+          return {
+            corretorId: corretor.id,
+            corretorNome: corretor.name,
+            corretorEmail: corretor.email,
+            total,
+            concluidos,
+            percentual,
+            desbloqueado,
+            ultimoFollowUp: ultimoFollowUp?.ultimaTentativa || null,
+          };
+        });
+
         return progressos.sort((a, b) => b.percentual - a.percentual);
       }),
     // Calcular progresso de follow-ups do dia (para bloqueio gamificado)

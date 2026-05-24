@@ -274,26 +274,43 @@ export async function updateUser(userId: number, data: Partial<typeof users.$inf
 export async function countLeadsRecebidosHoje(corretorId: number, dataInicio?: Date) {
   const db = await getDb();
   if (!db) return 0;
-  
-  // Importar funções de timezone
+
   const { inicioDoDiaHoje, fimDoDiaHoje, inicioDoDia, fimDoDia } = await import('./timezone');
-  
-  // Se não passar data, usar hoje no fuso de São Paulo
   const dataInicioSP = dataInicio ? inicioDoDia(dataInicio) : inicioDoDiaHoje();
   const dataFimSP = dataInicio ? fimDoDia(dataInicio) : fimDoDiaHoje();
-  
+
   const result = await db
     .select({ count: sql<number>`COUNT(*)` })
     .from(leads)
-    .where(
-      and(
-        eq(leads.corretorId, corretorId),
-        gte(leads.createdAt, dataInicioSP),
-        lte(leads.createdAt, dataFimSP)
-      )
-    );
-  
+    .where(and(
+      eq(leads.corretorId, corretorId),
+      gte(leads.createdAt, dataInicioSP),
+      lte(leads.createdAt, dataFimSP),
+    ));
+
   return result[0]?.count || 0;
+}
+
+/** Bulk version: returns a map of corretorId → count for the same day window */
+export async function countLeadsRecebidosHojeBulk(corretorIds: number[], dataInicio?: Date): Promise<Map<number, number>> {
+  const db = await getDb();
+  if (!db || corretorIds.length === 0) return new Map();
+
+  const { inicioDoDiaHoje, fimDoDiaHoje, inicioDoDia, fimDoDia } = await import('./timezone');
+  const dataInicioSP = dataInicio ? inicioDoDia(dataInicio) : inicioDoDiaHoje();
+  const dataFimSP = dataInicio ? fimDoDia(dataInicio) : fimDoDiaHoje();
+
+  const rows = await db
+    .select({ corretorId: leads.corretorId, count: sql<number>`COUNT(*)` })
+    .from(leads)
+    .where(and(
+      inArray(leads.corretorId, corretorIds),
+      gte(leads.createdAt, dataInicioSP),
+      lte(leads.createdAt, dataFimSP),
+    ))
+    .groupBy(leads.corretorId);
+
+  return new Map(rows.map((r) => [r.corretorId!, Number(r.count)]));
 }
 
 /**
@@ -8499,6 +8516,7 @@ export async function getTotalFollowUpsDoDia(corretorId: number, hojeParam?: Dat
     dataFollowUp: followUps.dataFollowUp,
     dataRegistro: followUps.dataRegistro,
     resultado: followUps.resultado,
+    ultimaTentativa: followUps.ultimaTentativa,
     status: followUps.status,
   })
     .from(followUps)
@@ -8513,6 +8531,47 @@ export async function getTotalFollowUpsDoDia(corretorId: number, hojeParam?: Dat
     ));
 }
 
+
+/** Bulk version: returns all pending follow-ups for a list of corretores */
+export async function getTotalFollowUpsDoDiaBulk(
+  corretorIds: number[],
+  hojeParam?: Date,
+): Promise<Map<number, Awaited<ReturnType<typeof getTotalFollowUpsDoDia>>>> {
+  const db = await getDb();
+  if (!db || corretorIds.length === 0) return new Map();
+
+  const { fimDoDiaHoje, inicioDoDiaHoje } = await import('./timezone');
+  const inicioDeHoje = hojeParam || inicioDoDiaHoje();
+  const fimDeHoje = fimDoDiaHoje();
+
+  const rows = await db.select({
+    id: followUps.id,
+    leadId: followUps.leadId,
+    corretorId: followUps.corretorId,
+    dataFollowUp: followUps.dataFollowUp,
+    dataRegistro: followUps.dataRegistro,
+    resultado: followUps.resultado,
+    ultimaTentativa: followUps.ultimaTentativa,
+    status: followUps.status,
+  })
+    .from(followUps)
+    .leftJoin(leads, eq(followUps.leadId, leads.id))
+    .where(and(
+      inArray(followUps.corretorId, corretorIds),
+      eq(followUps.status, "pendente"),
+      gte(followUps.dataFollowUp, inicioDeHoje),
+      lte(followUps.dataFollowUp, fimDeHoje),
+      eq(leads.status, "em_atendimento"),
+    ));
+
+  const map = new Map<number, typeof rows>();
+  for (const row of rows) {
+    if (!row.corretorId) continue;
+    if (!map.has(row.corretorId)) map.set(row.corretorId, []);
+    map.get(row.corretorId)!.push(row);
+  }
+  return map;
+}
 
 /**
  * Cria ou atualiza follow-up quando lead muda para "Em Atendimento"

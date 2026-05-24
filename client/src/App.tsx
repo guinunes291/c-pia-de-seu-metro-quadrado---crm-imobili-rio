@@ -12,7 +12,6 @@ import { CorretorNotifications } from "./components/CorretorNotifications";
 
 // Páginas críticas — carregamento imediato (core do fluxo de vendas)
 import Home from "./pages/Home";
-import Dashboard from "./pages/Dashboard";
 import DashboardPage from "@/features/dashboard/DashboardPage";
 import PerformancePage from "@/features/performance/PerformancePage";
 import Leads from "./pages/Leads";
