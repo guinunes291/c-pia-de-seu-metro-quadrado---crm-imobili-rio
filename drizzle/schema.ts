@@ -423,7 +423,11 @@ export const leadHistory = mysqlTable("lead_history", {
   statusNovo: varchar("statusNovo", { length: 50 }),
   
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  leadIdIdx: index("lead_history_lead_id_idx").on(table.leadId),
+  leadIdCreatedAtIdx: index("lead_history_lead_id_created_at_idx").on(table.leadId, table.createdAt),
+  corretorIdx: index("lead_history_corretor_idx").on(table.corretorId),
+}));
 
 export type LeadHistory = typeof leadHistory.$inferSelect;
 export type InsertLeadHistory = typeof leadHistory.$inferInsert;

@@ -11,6 +11,7 @@ import {
   GitBranch, BarChart3, Target, Loader2,
 } from "lucide-react";
 import { formatTimeAgo, getSlaStatus } from "@/lib/utils";
+import { BottleneckPanel } from "@/features/dashboard/sections/BottleneckPanel";
 
 // ============================================================================
 // DASHBOARD DO CORRETOR
@@ -354,6 +355,9 @@ function DashboardGestor() {
           </CardContent>
         </Card>
       )}
+
+      {/* Radar de Gargalos — SLA e leads travados no funil */}
+      <BottleneckPanel />
     </div>
   );
 }
