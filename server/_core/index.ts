@@ -228,6 +228,14 @@ async function startServer() {
     }).catch(err => {
       console.error("[Job] Erro ao inicializar job de follow-up vencido:", err);
     });
+
+    // Inicializar monitor de SLA (alertas automáticos ao corretor quando SLA vence)
+    import("../modules/slaMonitor").then(({ startSlaMonitor }) => {
+      startSlaMonitor(5); // a cada 5 minutos
+      console.log("[Job] Monitor de SLA inicializado (a cada 5 minutos)");
+    }).catch(err => {
+      console.error("[Job] Erro ao inicializar monitor de SLA:", err);
+    });
   });
 }
 
