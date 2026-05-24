@@ -391,6 +391,8 @@ export async function updateCorretor(id: number, data: {
   dataCredenciamento?: Date | null;
   dataDescredenciamento?: Date | null;
   situacao?: "ativo" | "inativo";
+  // Permissões
+  acessaLinksUteis?: boolean;
   // Endereço
   logradouro?: string;
   numero?: string;

@@ -5,12 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { UserPlus, Edit, Trash2, UserCheck, UserX, Mail, Phone, Search, MapPin, Calendar, FileText, Eye, Copy, MessageCircle, Loader2, X, Users } from "lucide-react";
+import { UserPlus, Edit, Trash2, UserCheck, UserX, Mail, Phone, Search, MapPin, Calendar, FileText, Eye, Copy, MessageCircle, Loader2, X, Users, Link } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertDialog,
@@ -36,6 +37,8 @@ interface CorretorFormData {
   dataCredenciamento: string;
   dataDescredenciamento: string;
   situacao: "ativo" | "inativo";
+  // Permissões
+  acessaLinksUteis: boolean;
   // Endereço
   logradouro: string;
   numero: string;
@@ -57,6 +60,7 @@ const initialFormData: CorretorFormData = {
   dataCredenciamento: "",
   dataDescredenciamento: "",
   situacao: "ativo",
+  acessaLinksUteis: false,
   logradouro: "",
   numero: "",
   complemento: "",
@@ -197,6 +201,7 @@ export default function Corretores() {
       dataCredenciamento: formatDateForInput(corretor.dataCredenciamento),
       dataDescredenciamento: formatDateForInput(corretor.dataDescredenciamento),
       situacao: corretor.situacao || "ativo",
+      acessaLinksUteis: corretor.acessaLinksUteis ?? false,
       logradouro: corretor.logradouro || "",
       numero: corretor.numero || "",
       complemento: corretor.complemento || "",
@@ -224,6 +229,7 @@ export default function Corretores() {
       situacao: formData.situacao,
       cpf: formData.cpf || undefined,
       creci: formData.creci || undefined,
+      acessaLinksUteis: formData.acessaLinksUteis,
       logradouro: formData.logradouro || undefined,
       numero: formData.numero || undefined,
       complemento: formData.complemento || undefined,
@@ -457,6 +463,21 @@ export default function Corretores() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="col-span-2 flex items-center justify-between rounded-lg border p-3 bg-muted/30">
+            <div className="space-y-0.5">
+              <Label htmlFor="acessaLinksUteis" className="text-sm font-medium flex items-center gap-1.5">
+                <Link className="h-3.5 w-3.5" />
+                Acesso a Links Úteis
+              </Label>
+              <p className="text-xs text-muted-foreground">Permite que o corretor visualize a página de Links Úteis</p>
+            </div>
+            <Switch
+              id="acessaLinksUteis"
+              checked={formData.acessaLinksUteis}
+              onCheckedChange={(checked) => setFormData({ ...formData, acessaLinksUteis: checked })}
+            />
+          </div>
         </div>
       </TabsContent>
       
@@ -634,7 +655,7 @@ export default function Corretores() {
                       </div>
 
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <h3 className="font-semibold text-lg">{corretor.name}</h3>
                           <Badge variant={corretor.situacao === "ativo" ? "default" : "secondary"}>
                             {corretor.situacao === "ativo" ? "Ativo" : "Inativo"}
@@ -652,6 +673,12 @@ export default function Corretores() {
                               </>
                             )}
                           </Badge>
+                          {(corretor as any).acessaLinksUteis && (
+                            <Badge variant="outline" className="border-blue-400 text-blue-600 text-xs">
+                              <Link className="mr-1 h-3 w-3" />
+                              Links Úteis
+                            </Badge>
+                          )}
                         </div>
 
                         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">

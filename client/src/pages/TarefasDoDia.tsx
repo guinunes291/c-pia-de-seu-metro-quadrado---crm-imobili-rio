@@ -400,20 +400,39 @@ export default function TarefasDoDia() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm">{item.leadNome}</p>
+                      {item.leadTelefone && (
+                        <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {item.leadTelefone}
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground mt-0.5">{item.motivo}</p>
                       <p className="text-xs text-purple-700 dark:text-purple-400 font-medium mt-1 flex items-center gap-1">
                         <ChevronRight className="h-3 w-3 shrink-0" />
                         {item.acao}
                       </p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="shrink-0 text-xs h-7 px-2"
-                      onClick={() => window.location.href = `/leads?leadId=${item.leadId}`}
-                    >
-                      Ver lead
-                    </Button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {item.leadTelefone && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-green-600 hover:bg-green-50"
+                          title="WhatsApp"
+                          onClick={() => window.open(gerarLinkWhatsApp(item.leadTelefone, item.leadNome), '_blank')}
+                        >
+                          <MessageCircle className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="shrink-0 text-xs h-7 px-2"
+                        onClick={() => window.location.href = `/leads?leadId=${item.leadId}`}
+                      >
+                        Ver
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>

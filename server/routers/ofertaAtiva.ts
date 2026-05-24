@@ -109,13 +109,18 @@ async function recalcularStats(
 
 export const ofertaAtivaRouter = router({
   list: corretorProcedure
-    .query(async ({ ctx }) => {
+    .input(z.object({ incluirArquivadas: z.boolean().optional().default(false) }).optional())
+    .query(async ({ ctx, input }) => {
       const drizzleDb = await db.getDb();
       if (!drizzleDb) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'DB indisponível' });
 
       const isGestor = isGestorLevel(ctx.user.role);
+      const statusFiltro = input?.incluirArquivadas
+        ? ['rascunho', 'ativa', 'concluida', 'arquivada']
+        : ['rascunho', 'ativa', 'concluida'];
+
       const conditions = [
-        inArray(ofertaAtivaTable.status, ['rascunho', 'ativa', 'concluida']),
+        inArray(ofertaAtivaTable.status, statusFiltro as any),
       ];
 
       if (!isGestor) {
@@ -361,6 +366,33 @@ export const ofertaAtivaRouter = router({
       await drizzleDb
         .update(ofertaAtivaTable)
         .set({ status: 'arquivada', updatedAt: new Date() })
+        .where(eq(ofertaAtivaTable.id, input.id));
+
+      return { success: true };
+    }),
+
+  restaurar: corretorProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const drizzleDb = await db.getDb();
+      if (!drizzleDb) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'DB indisponível' });
+
+      const [oferta] = await drizzleDb
+        .select()
+        .from(ofertaAtivaTable)
+        .where(eq(ofertaAtivaTable.id, input.id))
+        .limit(1);
+
+      if (!oferta) throw new TRPCError({ code: 'NOT_FOUND', message: 'Oferta não encontrada' });
+
+      const isGestor = isGestorLevel(ctx.user.role);
+      if (!isGestor && oferta.criadoPorId !== ctx.user.id) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso negado' });
+      }
+
+      await drizzleDb
+        .update(ofertaAtivaTable)
+        .set({ status: 'ativa', updatedAt: new Date() })
         .where(eq(ofertaAtivaTable.id, input.id));
 
       return { success: true };

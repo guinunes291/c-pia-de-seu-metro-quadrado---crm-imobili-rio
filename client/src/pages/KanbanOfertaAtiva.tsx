@@ -63,6 +63,7 @@ export default function KanbanOfertaAtiva() {
 
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.ofertaAtiva.get.useQuery({ id: ofertaId }, { enabled: !!ofertaId });
+  const { data: projetos } = trpc.projects.list.useQuery();
 
   const updateMutation = trpc.ofertaAtiva.updateItem.useMutation({
     onSuccess: () => {
@@ -321,6 +322,22 @@ export default function KanbanOfertaAtiva() {
                           onChange={(e) => setAgendHora(e.target.value)}
                           className="mt-1"
                         />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Empreendimento</Label>
+                        <Select
+                          value={agendProjectId ? String(agendProjectId) : ""}
+                          onValueChange={(v) => setAgendProjectId(v ? Number(v) : undefined)}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Selecione (opcional)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {projetos?.map((p: any) => (
+                              <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   )}

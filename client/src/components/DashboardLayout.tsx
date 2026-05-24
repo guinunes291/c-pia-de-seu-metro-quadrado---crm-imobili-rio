@@ -195,7 +195,7 @@ const menuGroupsCorretor = [
       { icon: FileText, label: "Propostas", path: "/propostas" },
       { icon: BookOpen, label: "Scripts de Vendas", path: "/scripts" },
       { icon: Megaphone, label: "Oferta Ativa", path: "/oferta-ativa" },
-      { icon: ExternalLink, label: "Links Úteis", path: "/links-uteis" },
+      { icon: ExternalLink, label: "Links Úteis", path: "/links-uteis", requireLinksUteis: true },
     ],
   },
   {
@@ -794,14 +794,17 @@ function DashboardContent({
     : user?.role === 'superintendente'
     ? menuGroupsSuperintendente
     : menuGroups;
+  const isItemVisible = (item: any) => {
+    if (item.roles && !item.roles.includes(user?.role || "")) return false;
+    if (item.requireLinksUteis && !(user as any)?.acessaLinksUteis) return false;
+    return true;
+  };
+
   const filteredGroups = activeMenuGroups.filter(group => {
     if ((group as any).roles && !(group as any).roles.includes(user?.role || "")) {
       return false;
     }
-    // Verificar se há pelo menos um item visível no grupo
-    const visibleItems = group.items.filter(item =>
-      !(item as any).roles || (item as any).roles.includes(user?.role || "")
-    );
+    const visibleItems = group.items.filter(isItemVisible);
     return visibleItems.length > 0;
   });
 
@@ -906,9 +909,7 @@ function DashboardContent({
           {/* Menu Agrupado */}
           <div className="px-2 py-1 space-y-1">
             {filteredGroups.map((group) => {
-              const visibleItems = group.items.filter(item =>
-                !(item as any).roles || (item as any).roles.includes(user?.role || "")
-              );
+              const visibleItems = group.items.filter(isItemVisible);
               const hasActiveItem = visibleItems.some(item => location === item.path);
               const GroupIcon = group.icon;
 

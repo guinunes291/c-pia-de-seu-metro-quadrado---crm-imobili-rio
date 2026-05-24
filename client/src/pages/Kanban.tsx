@@ -6,10 +6,13 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Phone, Mail, GripVertical, MessageCircle, CheckCircle2, FileCheck, FileText, Search, X, RefreshCw } from "lucide-react";
+import { Loader2, Phone, Mail, GripVertical, MessageCircle, CheckCircle2, FileCheck, FileText, Search, X, RefreshCw, CalendarPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import LeadTimer from "@/components/LeadTimer";
 import { TimerLead } from "@/components/TimerLead";
 import { ModalRegistrarVisita } from "@/components/ModalRegistrarVisita";
@@ -87,6 +90,55 @@ export default function Kanban() {
   // Estado do modal de análise de crédito
   const [modalAnaliseOpen, setModalAnaliseOpen] = useState(false);
   const [leadAnaliseSelecionado, setLeadAnaliseSelecionado] = useState<Lead | null>(null);
+
+  // Estado do modal de agendar visita (em_atendimento / qualificado)
+  const [modalAgendarOpen, setModalAgendarOpen] = useState(false);
+  const [leadAgendarSelecionado, setLeadAgendarSelecionado] = useState<Lead | null>(null);
+  const [agendarData, setAgendarData] = useState("");
+  const [agendarHora, setAgendarHora] = useState("");
+  const [agendarProjectId, setAgendarProjectId] = useState<string>("");
+
+  const { data: projetos } = trpc.projects.list.useQuery();
+
+  const criarAgendamento = trpc.agendamentos.create.useMutation({
+    onSuccess: () => {
+      if (leadAgendarSelecionado?.telefone) {
+        const dataFmt = agendarData ? new Date(agendarData + 'T12:00:00').toLocaleDateString('pt-BR') : agendarData;
+        const msg = `Oi ${leadAgendarSelecionado.nome}, confirmando sua visita para ${dataFmt} às ${agendarHora}. Até lá! 🏠`;
+        const numero = leadAgendarSelecionado.telefone.replace(/\D/g, "");
+        const waLink = `https://wa.me/${numero.startsWith("55") ? numero : "55" + numero}?text=${encodeURIComponent(msg)}`;
+        toast.success(
+          <span>
+            Visita agendada!{" "}
+            <a href={waLink} target="_blank" rel="noopener noreferrer" className="underline font-semibold text-green-700">
+              Enviar confirmação no WhatsApp
+            </a>
+          </span>
+        );
+      } else {
+        toast.success("Visita agendada com sucesso!");
+      }
+      setModalAgendarOpen(false);
+      setLeadAgendarSelecionado(null);
+      setAgendarData("");
+      setAgendarHora("");
+      setAgendarProjectId("");
+      refetchAll();
+    },
+    onError: (err) => {
+      toast.error(err.message || "Erro ao agendar visita");
+    },
+  });
+
+  function handleSalvarAgendamento() {
+    if (!leadAgendarSelecionado || !agendarData || !agendarHora) return;
+    criarAgendamento.mutate({
+      leadId: leadAgendarSelecionado.id,
+      dataAgendamento: agendarData,
+      horaAgendamento: agendarHora,
+      projectId: agendarProjectId ? Number(agendarProjectId) : undefined,
+    });
+  }
 
   // Estado de busca
   const [searchTerm, setSearchTerm] = useState("");
@@ -184,7 +236,7 @@ export default function Kanban() {
       updateLead.mutate({
         id: draggedLead.id,
         data: {
-          status: newStatus as "novo" | "aguardando_atendimento" | "em_atendimento" | "agendado" | "visita_realizada" | "analise_credito" | "contrato_fechado" | "perdido",
+          status: newStatus as "novo" | "aguardando_atendimento" | "em_atendimento" | "qualificado" | "agendado" | "visita_realizada" | "proposta_enviada" | "analise_credito" | "contrato_fechado" | "pos_venda" | "perdido",
         }
       });
     }
@@ -371,6 +423,26 @@ export default function Kanban() {
                           </div>
                           
                           <div className="mt-2 space-y-2">
+                            {/* Botão Agendar Visita para leads em atendimento ou qualificados */}
+                            {(column.id === 'em_atendimento' || column.id === 'qualificado') && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full mt-2 h-7 text-xs bg-cyan-50 hover:bg-cyan-100 border-cyan-300 text-cyan-700"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLeadAgendarSelecionado(lead);
+                                  setAgendarData("");
+                                  setAgendarHora("");
+                                  setAgendarProjectId("");
+                                  setModalAgendarOpen(true);
+                                }}
+                              >
+                                <CalendarPlus className="h-3 w-3 mr-1" />
+                                Agendar Visita
+                              </Button>
+                            )}
+
                             {/* Botão Registrar Visita apenas para leads agendados */}
                             {column.id === 'agendado' && (
                               <Button
@@ -482,10 +554,79 @@ export default function Kanban() {
           leadId={leadAnaliseSelecionado.id}
           leadNome={leadAnaliseSelecionado.nome}
           onSuccess={() => {
-            refetchAll(); // Recarregar leads após registrar análise
+            refetchAll();
           }}
         />
       )}
+
+      {/* Modal de Agendamento de Visita */}
+      <Dialog open={modalAgendarOpen} onOpenChange={(open) => { if (!open) { setModalAgendarOpen(false); setLeadAgendarSelecionado(null); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarPlus className="h-5 w-5 text-cyan-600" />
+              Agendar Visita
+            </DialogTitle>
+          </DialogHeader>
+          {leadAgendarSelecionado && (
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-muted-foreground">
+                Agendando visita para <strong>{leadAgendarSelecionado.nome}</strong>
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="agendar-data">Data *</Label>
+                  <Input
+                    id="agendar-data"
+                    type="date"
+                    value={agendarData}
+                    onChange={(e) => setAgendarData(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="agendar-hora">Hora *</Label>
+                  <Input
+                    id="agendar-hora"
+                    type="time"
+                    value={agendarHora}
+                    onChange={(e) => setAgendarHora(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="agendar-projeto">Empreendimento</Label>
+                <Select value={agendarProjectId} onValueChange={setAgendarProjectId}>
+                  <SelectTrigger id="agendar-projeto">
+                    <SelectValue placeholder="Selecione (opcional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projetos?.map((p: any) => (
+                      <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalAgendarOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSalvarAgendamento}
+              disabled={!agendarData || !agendarHora || criarAgendamento.isPending}
+              className="bg-cyan-600 hover:bg-cyan-700"
+            >
+              {criarAgendamento.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <CalendarPlus className="h-4 w-4 mr-2" />
+              )}
+              Confirmar Agendamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
