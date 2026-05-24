@@ -239,7 +239,7 @@ function BlocoFocoLigacoes() {
   const sessaoIniciadaEm = useRef(new Date());
   const salvarSessao = trpc.leads.salvarSessaoBlitz.useMutation();
 
-  const { data: leads, isLoading, refetch } = trpc.leads.getLeadsParaBlitz.useQuery(
+  const { data: leads, isLoading, isFetching, refetch } = trpc.leads.getLeadsParaBlitz.useQuery(
     { filtro, limit: 100 },
     { enabled: !!user, refetchOnWindowFocus: false }
   );
@@ -357,7 +357,7 @@ function BlocoFocoLigacoes() {
     acima_8: "Acima de R$ 8.000",
   };
 
-  if (isLoading) {
+  if (isLoading || isFetching) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-6 w-full" />
@@ -373,7 +373,7 @@ function BlocoFocoLigacoes() {
   }
 
   // Resumo da sessão: ao encerrar manualmente ou quando todos foram processados
-  if (sessaoConcluida || (!isLoading && leads && leads.length === 0 && processedCount > 0)) {
+  if (sessaoConcluida || (!isLoading && !isFetching && leads && leads.length === 0 && processedCount > 0)) {
     const encerradaEm = new Date();
     const duracaoMin = Math.max(1, Math.floor((encerradaEm.getTime() - sessaoIniciadaEm.current.getTime()) / 60000));
     const taxa = processedCount > 0 ? (atendimentos / processedCount) * 100 : 0;
@@ -432,7 +432,28 @@ function BlocoFocoLigacoes() {
     );
   }
 
-  const lead = currentLead!;
+  // Guard: se currentLead for undefined após todos os leads serem processados, mostrar tela de conclusão
+  if (!currentLead) {
+    return (
+      <div className="text-center py-16">
+        <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
+        <h3 className="text-xl font-bold mb-2">Todos os leads processados!</h3>
+        <p className="text-muted-foreground mb-6">Você chegou ao final da lista desta sessão.</p>
+        <div className="flex gap-3 justify-center">
+          <Button variant="outline" onClick={() => setSessaoConcluida(true)}>
+            <Trophy className="h-4 w-4 mr-2" />
+            Ver Resumo da Sessão
+          </Button>
+          <Button variant="outline" onClick={() => { setCurrentIndex(0); refetch(); }}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Recomeçar
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const lead = currentLead;
   const statusInfo = statusLabels[lead.status] || { label: lead.status, color: "bg-gray-100 text-gray-800" };
   const whatsappLink = `https://wa.me/55${lead.telefone?.replace(/\D/g, "")}`;
   const diasSemContato = lead.ultimoContato
