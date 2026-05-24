@@ -76,6 +76,7 @@ import { getDateRangeFromPreset } from "@/lib/dateRangeUtils";
 import { ExecutandoComIA } from "@/components/ExecutandoComIA";
 import { CarteiraAtivaQuickButton } from "@/pages/CarteiraAtiva";
 import { useLeadsFilters } from "@/features/leads/hooks/useLeadsFilters";
+import { SLAProgressBar, LeadTemperatureBadge } from "@/components/common";
 
 const statusLabels: Record<string, string> = {
   novo: "Novo",
@@ -998,20 +999,14 @@ export default function Leads() {
                                 {lead.corretorNome}
                               </Badge>
                             )}
-                            {lead.temperatura === 'quente' && (
-                              <Badge className="bg-red-100 text-red-700 border border-red-300 flex items-center gap-1">
-                                <Flame className="h-3 w-3" /> Quente
-                              </Badge>
-                            )}
-                            {lead.temperatura === 'morno' && (
-                              <Badge className="bg-orange-100 text-orange-700 border border-orange-300 flex items-center gap-1">
-                                <Thermometer className="h-3 w-3" /> Morno
-                              </Badge>
-                            )}
-                            {lead.temperatura === 'frio' && (
-                              <Badge className="bg-blue-100 text-blue-700 border border-blue-300 flex items-center gap-1">
-                                <Snowflake className="h-3 w-3" /> Frio
-                              </Badge>
+                            {lead.temperatura && (
+                              <LeadTemperatureBadge
+                                temperature={
+                                  lead.temperatura === 'quente' ? 'hot' :
+                                  lead.temperatura === 'frio' ? 'cold' : 'warm'
+                                }
+                                showLabel
+                              />
                             )}
                             {lead.origemWebhook && (
                               <Badge className="bg-red-600 hover:bg-red-700 text-white">
@@ -1048,6 +1043,11 @@ export default function Leads() {
                       </div>
                     </CardHeader>
                     <CardContent>
+                      {/* SLA progress bar — verde/âmbar/vermelho conforme tempo no status */}
+                      {(() => {
+                        const hoursInStatus = (Date.now() - new Date(lead.updatedAt).getTime()) / 3_600_000;
+                        return <SLAProgressBar status={lead.status} hoursInStatus={hoursInStatus} showLabel className="mb-3" />;
+                      })()}
                       <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
                           {/* Melhoria 8: Telefone com botão copiar */}
