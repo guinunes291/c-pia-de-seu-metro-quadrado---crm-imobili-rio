@@ -242,7 +242,8 @@ export async function getCorretoresParaRedistribuicao(): Promise<number[]> {
 }
 
 /**
- * Retorna lista de corretores elegíveis ordenados por melhor taxa de conversão
+ * Retorna lista de corretores elegíveis ordenados por melhor taxa de conversão.
+ * Uses bulk queries instead of N+1 per-corretor checks.
  */
 export async function getCorretoresElegiveis(
   projectId?: number,
@@ -251,44 +252,55 @@ export async function getCorretoresElegiveis(
   const db = await getDb();
   if (!db) return [];
 
-  // Buscar todos os corretores
+  // Single query: all active corretores
   const todosCorretores = await db
-    .select()
+    .select({ id: users.id, status: users.status })
     .from(users)
-    .where(eq(users.role, "corretor"));
+    .where(and(eq(users.role, "corretor"), eq(users.status, "presente")));
 
-  // Filtrar corretores elegíveis
-  const corretoresElegiveis: Array<{ id: number; taxa: number }> = [];
+  if (todosCorretores.length === 0) return [];
 
-  for (const corretor of todosCorretores) {
-    const elegivel = await isCorretorElegivel(corretor.id);
-    
-    if (elegivel) {
+  const corretorIds = todosCorretores.map((c) => c.id);
+
+  // Single query: lead counts per corretor (total + aguardando)
+  const leadCountRows = await db
+    .select({
+      corretorId: leads.corretorId,
+      total: sql<number>`COUNT(*)`,
+      aguardando: sql<number>`SUM(CASE WHEN ${leads.status} = 'aguardando_atendimento' THEN 1 ELSE 0 END)`,
+    })
+    .from(leads)
+    .where(and(inArray(leads.corretorId, corretorIds), eq(leads.naLixeira, false)))
+    .groupBy(leads.corretorId);
+
+  const countMap = new Map(
+    leadCountRows.map((r) => [r.corretorId, { total: Number(r.total), aguardando: Number(r.aguardando) }])
+  );
+
+  // Determine eligible corretores without per-corretor queries
+  const elegiveis = todosCorretores.filter((c) => {
+    const counts = countMap.get(c.id) ?? { total: 0, aguardando: 0 };
+    if (counts.total === 0) return true;
+    if (counts.total < MINIMO_LEADS_GARANTIDO) return true;
+    return (counts.total - counts.aguardando) / counts.total >= PERCENTUAL_MINIMO_TRABALHADOS;
+  });
+
+  if (elegiveis.length === 0) return [];
+
+  // Fetch conversion rates in parallel for eligible corretores only
+  const elegivelIds = elegiveis.map((c) => c.id);
+  const taxas = await Promise.all(
+    elegivelIds.map(async (id) => {
       let taxa = 0;
+      if (projectId) taxa = await getTaxaConversaoPorProjeto(id, projectId);
+      if (taxa === 0 && regiao) taxa = await getTaxaConversaoPorRegiao(id, regiao);
+      if (taxa === 0) taxa = await getTaxaConversaoPorProjeto(id, null);
+      return { id, taxa };
+    })
+  );
 
-      // Priorizar taxa por projeto
-      if (projectId) {
-        taxa = await getTaxaConversaoPorProjeto(corretor.id, projectId);
-      }
-
-      // Se não houver taxa por projeto, usar taxa por região
-      if (taxa === 0 && regiao) {
-        taxa = await getTaxaConversaoPorRegiao(corretor.id, regiao);
-      }
-
-      // Se ainda não houver taxa, usar taxa geral
-      if (taxa === 0) {
-        taxa = await getTaxaConversaoPorProjeto(corretor.id, null);
-      }
-
-      corretoresElegiveis.push({ id: corretor.id, taxa });
-    }
-  }
-
-  // Ordenar por maior taxa de conversão
-  corretoresElegiveis.sort((a, b) => b.taxa - a.taxa);
-
-  return corretoresElegiveis.map((c) => c.id);
+  taxas.sort((a, b) => b.taxa - a.taxa);
+  return taxas.map((c) => c.id);
 }
 
 /**
@@ -713,7 +725,8 @@ async function getCorretoresElegiveisParaDistribuicao(): Promise<number[]> {
 }
 
 /**
- * Obtém estatísticas de distribuição de todos os corretores
+ * Obtém estatísticas de distribuição de todos os corretores.
+ * Uses bulk queries instead of N+1 per-corretor getCorretorStatus calls.
  */
 export async function getEstatisticasDistribuicao(): Promise<CorretorStatus[]> {
   const db = await getDb();
@@ -724,16 +737,67 @@ export async function getEstatisticasDistribuicao(): Promise<CorretorStatus[]> {
     .from(users)
     .where(eq(users.role, "corretor"));
 
-  const estatisticas: CorretorStatus[] = [];
+  if (todosCorretores.length === 0) return [];
 
-  for (const corretor of todosCorretores) {
-    const status = await getCorretorStatus(corretor.id);
-    if (status) {
-      estatisticas.push(status);
+  const corretorIds = todosCorretores.map((c) => c.id);
+
+  // Single bulk query for all lead counts
+  const leadCountRows = await db
+    .select({
+      corretorId: leads.corretorId,
+      total: sql<number>`COUNT(*)`,
+      trabalhados: sql<number>`SUM(CASE WHEN ${leads.status} = 'em_atendimento' THEN 1 ELSE 0 END)`,
+      aguardando: sql<number>`SUM(CASE WHEN ${leads.status} = 'aguardando_atendimento' THEN 1 ELSE 0 END)`,
+    })
+    .from(leads)
+    .where(
+      and(
+        inArray(leads.corretorId, corretorIds),
+        eq(leads.naLixeira, false),
+        sql`${leads.status} IN ('aguardando_atendimento', 'em_atendimento')`
+      )
+    )
+    .groupBy(leads.corretorId);
+
+  const countMap = new Map(
+    leadCountRows.map((r) => [
+      r.corretorId,
+      { total: Number(r.total), trabalhados: Number(r.trabalhados), aguardando: Number(r.aguardando) },
+    ])
+  );
+
+  return todosCorretores.map((corretor) => {
+    const counts = countMap.get(corretor.id) ?? { total: 0, trabalhados: 0, aguardando: 0 };
+    const taxaTrabalho = counts.total > 0 ? counts.trabalhados / counts.total : 0;
+    const elegivel =
+      corretor.status === "presente" &&
+      (counts.total === 0 ||
+        counts.total < MINIMO_LEADS_GARANTIDO ||
+        (counts.total - counts.aguardando) / counts.total >= PERCENTUAL_MINIMO_TRABALHADOS);
+
+    let motivoBloqueio: string | null = null;
+    if (!elegivel) {
+      if (corretor.status !== "presente") {
+        motivoBloqueio = "Ausente";
+      } else {
+        const pct = counts.total > 0 ? Math.round(((counts.total - counts.aguardando) / counts.total) * 100) : 0;
+        motivoBloqueio = `${pct}% trabalhados (mín. 90% — ${counts.aguardando} aguardando de ${counts.total})`;
+      }
     }
-  }
 
-  return estatisticas;
+    return {
+      id: corretor.id,
+      nome: corretor.name || "",
+      email: corretor.email || "",
+      totalLeads: counts.total,
+      leadsTrabalhados: counts.trabalhados,
+      taxaTrabalho,
+      aguardandoLeads: counts.aguardando,
+      elegivel,
+      motivoBloqueio,
+      status: corretor.status || "ausente",
+    };
+  });
 }
 
 

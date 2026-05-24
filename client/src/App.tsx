@@ -13,16 +13,18 @@ import { CorretorNotifications } from "./components/CorretorNotifications";
 // Páginas críticas — carregamento imediato (core do fluxo de vendas)
 import Home from "./pages/Home";
 import DashboardPage from "@/features/dashboard/DashboardPage";
-import PerformancePage from "@/features/performance/PerformancePage";
-import Leads from "./pages/Leads";
-import Kanban from "@/pages/Kanban";
-import CarteiraAtiva from "@/pages/CarteiraAtiva";
-import TarefasDoDia from "@/pages/TarefasDoDia";
-import ModoBlitz from "@/pages/ModoBlitz";
-import Agendamentos from "@/pages/Agendamentos";
-import MinhaAgenda from "@/pages/MinhaAgenda";
-import MeuPainel from "@/pages/MeuPainel";
-import MeuFollowUp from "@/pages/meu-negocio/MeuFollowUp";
+
+// Páginas primárias — lazy loading para reduzir bundle inicial
+const PerformancePage = lazy(() => import("@/features/performance/PerformancePage"));
+const Leads = lazy(() => import("./pages/Leads"));
+const Kanban = lazy(() => import("@/pages/Kanban"));
+const CarteiraAtiva = lazy(() => import("@/pages/CarteiraAtiva"));
+const TarefasDoDia = lazy(() => import("@/pages/TarefasDoDia"));
+const ModoBlitz = lazy(() => import("@/pages/ModoBlitz"));
+const Agendamentos = lazy(() => import("@/pages/Agendamentos"));
+const MinhaAgenda = lazy(() => import("@/pages/MinhaAgenda"));
+const MeuPainel = lazy(() => import("@/pages/MeuPainel"));
+const MeuFollowUp = lazy(() => import("@/pages/meu-negocio/MeuFollowUp"));
 
 // Páginas secundárias — lazy loading (não acessadas na maioria das sessões)
 const Projetos = lazy(() => import("./pages/Projetos"));
