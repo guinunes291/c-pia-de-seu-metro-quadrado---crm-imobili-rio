@@ -15,6 +15,9 @@ import { TimerLead } from "@/components/TimerLead";
 import { ModalRegistrarVisita } from "@/components/ModalRegistrarVisita";
 import { ModalFecharContrato } from "@/components/ModalFecharContrato";
 import { ModalRegistrarAnaliseCredito } from "@/components/ModalRegistrarAnaliseCredito";
+import { LeadTemperatureBadge } from "@/components/common/LeadTemperatureBadge";
+import { SLAProgressBar } from "@/components/common/SLAProgressBar";
+import { calcLeadTemperature } from "@shared/leadStatus";
 
 // Definição das colunas do Kanban baseadas nos status do lead
 const KANBAN_COLUMNS = [
@@ -39,6 +42,7 @@ type Lead = {
   status: string;
   origem: string | null;
   createdAt: Date;
+  updatedAt: Date;
   corretorId: number | null;
 };
 
@@ -294,15 +298,17 @@ export default function Kanban() {
                         <GripVertical className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 mb-0.5">
-                            <p className="font-medium truncate">{lead.nome}</p>
-                            {/* SLA indicator */}
+                            <p className="font-medium truncate flex-1">{lead.nome}</p>
                             {(() => {
-                              const sla = getSlaStatus((lead as any).ultimaInteracao || lead.createdAt);
-                              if (sla === 'critical') return <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" title="SLA crítico (>48h sem contato)" />;
-                              if (sla === 'warning') return <span className="w-2 h-2 rounded-full bg-yellow-400 shrink-0" title="SLA atenção (24-48h)" />;
-                              return null;
+                              const hoursInStatus = (Date.now() - new Date(lead.updatedAt).getTime()) / 3_600_000;
+                              const temp = calcLeadTemperature(lead.status, hoursInStatus, false);
+                              return <LeadTemperatureBadge temperature={temp} className="flex-shrink-0" />;
                             })()}
                           </div>
+                          {(() => {
+                            const hoursInStatus = (Date.now() - new Date(lead.updatedAt).getTime()) / 3_600_000;
+                            return <SLAProgressBar status={lead.status} hoursInStatus={hoursInStatus} className="mb-1" />;
+                          })()}
                           
                           {lead.telefone && (
                             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">

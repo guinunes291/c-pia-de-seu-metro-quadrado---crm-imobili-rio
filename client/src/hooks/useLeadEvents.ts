@@ -29,11 +29,13 @@ export function useLeadEvents() {
       es.addEventListener("novo_lead", () => {
         utils.dashboard.leadsPrioritarios.invalidate();
         utils.leads.getNewWebhookLeads.invalidate();
+        utils.notifications.unreadCount.invalidate();
       });
 
       es.addEventListener("lead_transferido", () => {
         utils.dashboard.leadsPrioritarios.invalidate();
         utils.leads.getNewWebhookLeads.invalidate();
+        utils.notifications.unreadCount.invalidate();
       });
 
       // SLA or gestor alert — show immediately without waiting for 3-min poll
