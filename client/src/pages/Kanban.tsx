@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { normalizeSearch, getSlaStatus, formatTimeAgo } from "@/lib/utils";
+import { normalizeSearch } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { gerarLinkWhatsApp } from "@/lib/whatsapp";
 import { useAuth } from "@/_core/hooks/useAuth";
