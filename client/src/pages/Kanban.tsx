@@ -6,7 +6,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Phone, Mail, GripVertical, MessageCircle, CheckCircle2, FileCheck, FileText, Search, X, RefreshCw, CalendarPlus } from "lucide-react";
+import { Loader2, Phone, Mail, GripVertical, MessageCircle, CheckCircle2, FileCheck, FileText, Search, X, RefreshCw, CalendarPlus, Filter, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,6 +100,13 @@ export default function Kanban() {
 
   const { data: projetos } = trpc.projects.list.useQuery();
 
+  // Filtros avançados (gestor)
+  const isGestor = user?.role === 'gestor' || user?.role === 'admin' || user?.role === 'superintendente';
+  const [corretorFiltroKanban, setCorretorFiltroKanban] = useState<string>("todos");
+  const [projetoFiltroKanban, setProjetoFiltroKanban] = useState<string>("todos");
+  const [slaFiltroKanban, setSlaFiltroKanban] = useState<boolean>(false);
+  const { data: corretoresListaKanban } = trpc.corretores.list.useQuery(undefined, { enabled: isGestor });
+
   const criarAgendamento = trpc.agendamentos.create.useMutation({
     onSuccess: () => {
       if (leadAgendarSelecionado?.telefone) {
@@ -151,28 +158,33 @@ export default function Kanban() {
     return acc;
   }, {} as Record<string, Lead[]>);
 
-  // Filtrar leads pela busca normalizada (frontend — dados já carregados)
+  // Filtrar leads pela busca normalizada + filtros avançados
   const leadsByStatus = useMemo(() => {
-    if (!searchNorm) return allLeadsByStatus;
     const matchesSearch = (lead: Lead) => {
-      // Busca por nome normalizado
+      if (!searchNorm) return true;
       if (normalizeSearch(lead.nome).includes(searchNorm)) return true;
-      // Busca por telefone (apenas dígitos)
       const phoneDigits = (lead.telefone || "").replace(/\D/g, "");
       const searchDigits = searchNorm.replace(/\D/g, "");
       if (searchDigits.length >= 4 && phoneDigits.includes(searchDigits)) return true;
-      // Busca por nome do corretor normalizado
       if (normalizeSearch((lead as any).corretorNome).includes(searchNorm)) return true;
-      // Busca por e-mail normalizado
       if (normalizeSearch(lead.email).includes(searchNorm)) return true;
       return false;
     };
+    const matchesFilters = (lead: Lead) => {
+      if (corretorFiltroKanban !== "todos" && String((lead as any).corretorId) !== corretorFiltroKanban) return false;
+      if (projetoFiltroKanban !== "todos" && String((lead as any).projectId) !== projetoFiltroKanban) return false;
+      if (slaFiltroKanban) {
+        const hoursAgo = (Date.now() - new Date(lead.updatedAt).getTime()) / 3_600_000;
+        if (hoursAgo < 48) return false;
+      }
+      return true;
+    };
     return visibleColumns.reduce((acc, column) => {
-      acc[column.id] = allLeadsByStatus[column.id].filter(matchesSearch);
+      acc[column.id] = allLeadsByStatus[column.id].filter(l => matchesSearch(l) && matchesFilters(l));
       return acc;
     }, {} as Record<string, Lead[]>);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allLeadsByStatus, searchNorm]);
+  }, [allLeadsByStatus, searchNorm, corretorFiltroKanban, projetoFiltroKanban, slaFiltroKanban]);
 
   const totalFound = useMemo(
     () => Object.values(leadsByStatus).flat().length,
@@ -299,6 +311,77 @@ export default function Kanban() {
             </div>
           </div>
         </div>
+
+        {/* Filtros avançados para gestor */}
+        {isGestor && (
+          <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg border border-dashed bg-muted/20">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground mr-1">
+              <Filter className="h-3.5 w-3.5" />
+              <span>Filtros</span>
+            </div>
+            {/* Filtro por corretor */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Corretor</Label>
+              <Select value={corretorFiltroKanban} onValueChange={setCorretorFiltroKanban}>
+                <SelectTrigger className="h-8 text-xs w-44">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os corretores</SelectItem>
+                  {(corretoresListaKanban || []).map((c: any) => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.nome || c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Filtro por projeto */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Projeto</Label>
+              <Select value={projetoFiltroKanban} onValueChange={setProjetoFiltroKanban}>
+                <SelectTrigger className="h-8 text-xs w-44">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os projetos</SelectItem>
+                  {(projetos || []).map((p: any) => (
+                    <SelectItem key={p.id} value={String(p.id)}>{p.nome || p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Filtro SLA crítico */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">SLA</Label>
+              <button
+                onClick={() => setSlaFiltroKanban(!slaFiltroKanban)}
+                className={`flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs font-medium transition-colors ${
+                  slaFiltroKanban
+                    ? "bg-red-500/10 border-red-500 text-red-600"
+                    : "bg-muted border-border text-muted-foreground hover:bg-muted/80"
+                }`}
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+                SLA crítico (&gt;48h)
+              </button>
+            </div>
+            {/* Limpar filtros */}
+            {(corretorFiltroKanban !== "todos" || projetoFiltroKanban !== "todos" || slaFiltroKanban) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs text-muted-foreground self-end"
+                onClick={() => {
+                  setCorretorFiltroKanban("todos");
+                  setProjetoFiltroKanban("todos");
+                  setSlaFiltroKanban(false);
+                }}
+              >
+                <X className="h-3.5 w-3.5 mr-1" />
+                Limpar
+              </Button>
+            )}
+          </div>
+        )}
 
         {/* Resultado da busca */}
         {searchNorm && (

@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Users, UserCheck, UserX, Phone, Mail, Calendar, Filter, RefreshCw, Trash2, MessageCircle, Search } from "lucide-react";
+import { Loader2, Users, UserCheck, UserX, Phone, Mail, Calendar, Filter, RefreshCw, Trash2, MessageCircle, Search, FileDown } from "lucide-react";
 import TransferirLeadButton from "@/components/TransferirLeadButton";
 import { TransferirEmLoteDialog } from "@/components/TransferirEmLoteDialog";
 import { useState, useEffect } from "react";
@@ -106,6 +106,34 @@ export default function LeadsPorCorretor() {
   const handleRefresh = () => {
     refetchEstatisticas();
     refetchLeads();
+  };
+
+  const exportarCSV = () => {
+    if (!leads || leads.length === 0) {
+      toast.error("Nenhum lead para exportar com os filtros atuais.");
+      return;
+    }
+    const headers = ["ID", "Nome", "Telefone", "Email", "Status", "Corretor", "Projeto", "Origem", "Data Criação"];
+    const rows = leads.map((l: any) => [
+      l.id,
+      `"${(l.nome || "").replace(/"/g, '""')}"`,
+      l.telefone || "",
+      l.email || "",
+      l.status || "",
+      `"${(l.corretorNome || "").replace(/"/g, '""')}"`,
+      `"${(l.projectName || l.projetoNome || "").replace(/"/g, '""')}"`,
+      l.origem || "",
+      l.createdAt ? new Date(l.createdAt).toLocaleDateString('pt-BR') : "",
+    ]);
+    const csvContent = [headers.join(";"), ...rows.map(r => r.join(";"))].join("\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `leads_por_corretor_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`${leads.length} leads exportados com sucesso!`);
   };
 
   const clearFilters = () => {
@@ -205,6 +233,10 @@ export default function LeadsPorCorretor() {
                 </Button>
               </>
             )}
+            <Button variant="outline" onClick={exportarCSV} title="Exportar leads filtrados como CSV">
+              <FileDown className="mr-2 h-4 w-4" />
+              Exportar CSV
+            </Button>
             <Button variant="outline" onClick={handleRefresh}>
               <RefreshCw className="mr-2 h-4 w-4" />
               Atualizar

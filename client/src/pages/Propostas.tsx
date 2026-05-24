@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Plus, Eye, Send, Copy, ExternalLink, Loader2, Search, Building2, User, DollarSign, Calendar, Upload, Table, Pencil, Trash2, ImageIcon, BookOpen, FileDown, X } from "lucide-react";
+import { FileText, Plus, Eye, Send, Copy, ExternalLink, Loader2, Search, Building2, User, DollarSign, Calendar, Upload, Table, Pencil, Trash2, ImageIcon, BookOpen, FileDown, X, Filter } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -58,6 +58,11 @@ export default function Propostas() {
   const [searchLead, setSearchLead] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("todos");
   const [searchCliente, setSearchCliente] = useState("");
+  const [corretorFilterPropostas, setCorretorFilterPropostas] = useState<string>("todos");
+  const [projetoFilterPropostas, setProjetoFilterPropostas] = useState<string>("todos");
+  const [dataInicioPropostas, setDataInicioPropostas] = useState<string>("");
+  const [dataFimPropostas, setDataFimPropostas] = useState<string>("");
+  const isGestorPropostas = user?.role === 'gestor' || user?.role === 'admin' || user?.role === 'superintendente';
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("dados");
   const [parcelas, setParcelas] = useState<ParcelaPagamento[]>(PARCELAS_PADRAO);
@@ -98,6 +103,7 @@ export default function Propostas() {
   // Queries
   const { data: propostas, isLoading } = trpc.propostas.list.useQuery();
   const { data: projetos } = trpc.projects.list.useQuery();
+  const { data: corretoresListaPropostas } = trpc.corretores.list.useQuery(undefined, { enabled: isGestorPropostas });
   const { data: leadsSearch } = trpc.searchLeads.byIdentifier.useQuery(
     { query: searchLead },
     { enabled: searchLead.length >= 3 }
@@ -744,39 +750,114 @@ export default function Propostas() {
 
         {/* Filtros da lista */}
         {!isLoading && propostas && propostas.length > 0 && (
-          <div className="flex flex-wrap gap-3 items-center">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <Input
-                value={searchCliente}
-                onChange={(e) => setSearchCliente(e.target.value)}
-                placeholder="Buscar por cliente..."
-                className="pl-10 pr-10 bg-slate-800 border-slate-600 text-white"
-              />
-              {searchCliente && (
-                <button
-                  onClick={() => setSearchCliente("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                  aria-label="Limpar busca"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-3 items-center">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  value={searchCliente}
+                  onChange={(e) => setSearchCliente(e.target.value)}
+                  placeholder="Buscar por cliente..."
+                  className="pl-10 pr-10 bg-slate-800 border-slate-600 text-white"
+                />
+                {searchCliente && (
+                  <button
+                    onClick={() => setSearchCliente("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                    aria-label="Limpar busca"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-48 bg-slate-800 border-slate-600 text-white">
+                  <SelectValue placeholder="Todos os status" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-700 border-slate-600">
+                  <SelectItem value="todos">Todos os status</SelectItem>
+                  <SelectItem value="rascunho">Rascunho</SelectItem>
+                  <SelectItem value="enviada">Enviada</SelectItem>
+                  <SelectItem value="visualizada">Visualizada</SelectItem>
+                  <SelectItem value="aceita">Aceita</SelectItem>
+                  <SelectItem value="recusada">Recusada</SelectItem>
+                  <SelectItem value="expirada">Expirada</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-48 bg-slate-800 border-slate-600 text-white">
-                <SelectValue placeholder="Todos os status" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-700 border-slate-600">
-                <SelectItem value="todos">Todos os status</SelectItem>
-                <SelectItem value="rascunho">Rascunho</SelectItem>
-                <SelectItem value="enviada">Enviada</SelectItem>
-                <SelectItem value="visualizada">Visualizada</SelectItem>
-                <SelectItem value="aceita">Aceita</SelectItem>
-                <SelectItem value="recusada">Recusada</SelectItem>
-                <SelectItem value="expirada">Expirada</SelectItem>
-              </SelectContent>
-            </Select>
+            {/* Filtros avançados para gestor */}
+            {isGestorPropostas && (
+              <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg border border-dashed border-slate-600 bg-slate-800/50">
+                <div className="flex items-center gap-1 text-xs text-slate-400 mr-1">
+                  <Filter className="h-3.5 w-3.5" />
+                  <span>Filtros avançados</span>
+                </div>
+                {/* Filtro por corretor */}
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-400">Corretor</label>
+                  <Select value={corretorFilterPropostas} onValueChange={setCorretorFilterPropostas}>
+                    <SelectTrigger className="h-8 text-xs w-44 bg-slate-700 border-slate-600 text-white">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-700 border-slate-600">
+                      <SelectItem value="todos">Todos os corretores</SelectItem>
+                      {(corretoresListaPropostas || []).map((c: any) => (
+                        <SelectItem key={c.id} value={String(c.id)}>{c.nome || c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* Filtro por projeto */}
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-400">Projeto</label>
+                  <Select value={projetoFilterPropostas} onValueChange={setProjetoFilterPropostas}>
+                    <SelectTrigger className="h-8 text-xs w-44 bg-slate-700 border-slate-600 text-white">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-700 border-slate-600">
+                      <SelectItem value="todos">Todos os projetos</SelectItem>
+                      {(projetos || []).map((p: any) => (
+                        <SelectItem key={p.id} value={String(p.id)}>{p.nome || p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* Filtro por período */}
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-400">De</label>
+                  <Input
+                    type="date"
+                    className="h-8 text-xs w-36 bg-slate-700 border-slate-600 text-white"
+                    value={dataInicioPropostas}
+                    onChange={(e) => setDataInicioPropostas(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-400">Até</label>
+                  <Input
+                    type="date"
+                    className="h-8 text-xs w-36 bg-slate-700 border-slate-600 text-white"
+                    value={dataFimPropostas}
+                    onChange={(e) => setDataFimPropostas(e.target.value)}
+                  />
+                </div>
+                {/* Limpar filtros avançados */}
+                {(corretorFilterPropostas !== "todos" || projetoFilterPropostas !== "todos" || dataInicioPropostas || dataFimPropostas) && (
+                  <button
+                    onClick={() => {
+                      setCorretorFilterPropostas("todos");
+                      setProjetoFilterPropostas("todos");
+                      setDataInicioPropostas("");
+                      setDataFimPropostas("");
+                    }}
+                    className="flex items-center gap-1 text-xs text-slate-400 hover:text-white self-end h-8 px-2"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Limpar
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -788,7 +869,25 @@ export default function Propostas() {
             </div>
           ) : propostas && propostas.length > 0 ? (
             propostas
-              .filter((p) => (statusFilter === "todos" || p.status === statusFilter) && (!searchCliente || p.nomeCliente.toLowerCase().includes(searchCliente.toLowerCase())))
+              .filter((p) => {
+                if (statusFilter !== "todos" && p.status !== statusFilter) return false;
+                if (searchCliente && !p.nomeCliente.toLowerCase().includes(searchCliente.toLowerCase())) return false;
+                if (isGestorPropostas) {
+                  if (corretorFilterPropostas !== "todos" && String((p as any).corretorId) !== corretorFilterPropostas) return false;
+                  if (projetoFilterPropostas !== "todos" && String((p as any).projectId) !== projetoFilterPropostas) return false;
+                  if (dataInicioPropostas) {
+                    const criado = new Date(p.createdAt);
+                    if (criado < new Date(dataInicioPropostas)) return false;
+                  }
+                  if (dataFimPropostas) {
+                    const criado = new Date(p.createdAt);
+                    const fim = new Date(dataFimPropostas);
+                    fim.setHours(23, 59, 59);
+                    if (criado > fim) return false;
+                  }
+                }
+                return true;
+              })
               .map((proposta) => (
               <Card key={proposta.id} className="bg-slate-800 border-slate-600 shadow-lg hover:border-slate-500 transition-colors">
                 <CardContent className="p-4">

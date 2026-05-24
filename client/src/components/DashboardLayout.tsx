@@ -78,7 +78,7 @@ const menuGroups = [
       { icon: Users, label: "Meus Leads", path: "/leads" },
       { icon: Shield, label: "Carteira Ativa", path: "/carteira-ativa" },
       { icon: Kanban, label: "Kanban", path: "/kanban" },
-      { icon: CalendarCheck, label: "Agendamentos", path: "/agendamentos" },
+      { icon: CalendarCheck, label: "Agendamentos", path: "/agendamentos", showAgendBadge: true },
       { icon: Calendar, label: "Minha Agenda", path: "/minha-agenda", roles: ["corretor"] },
       { icon: FileText, label: "Propostas", path: "/propostas" },
       { icon: Users, label: "Leads por Corretor", path: "/leads-por-corretor", roles: ["gestor", "admin", "superintendente"] },
@@ -190,7 +190,7 @@ const menuGroupsCorretor = [
     icon: Users,
     items: [
       { icon: Users, label: "Meus Leads", path: "/leads", showLeadsBadge: true },
-      { icon: CalendarCheck, label: "Agendamentos", path: "/agendamentos" },
+      { icon: CalendarCheck, label: "Agendamentos", path: "/agendamentos", showAgendBadge: true },
       { icon: Calendar, label: "Minha Agenda", path: "/minha-agenda" },
       { icon: FileText, label: "Propostas", path: "/propostas" },
       { icon: BookOpen, label: "Scripts de Vendas", path: "/scripts" },
@@ -530,6 +530,14 @@ function AlertasBadge({ count }: { count: number }) {
   if (count === 0) return null;
   return (
     <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-medium text-white">
+      {count > 9 ? '9+' : count}
+    </span>
+  );
+}
+function AgendBadge({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-cyan-500 text-[10px] font-medium text-white">
       {count > 9 ? '9+' : count}
     </span>
   );
@@ -932,6 +940,7 @@ function DashboardContent({
                               {(item as any).showBadge && <NotificationBadge />}
                               {(item as any).showLeadsBadge && isCorretor && <LeadsActionsBadge count={totalAcoesLeads} />}
                               {(item as any).showAlertasBadge && isGestorOuSuperior && <AlertasBadge count={totalAlertasEquipe} />}
+                              {(item as any).showAgendBadge && isCorretor && <AgendBadge count={agendamentosHojeCount} />}
                               {(item as any).showAlert && !desbloqueado && (
                                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -984,6 +993,7 @@ function DashboardContent({
                               {(item as any).showBadge && <NotificationBadge />}
                               {(item as any).showLeadsBadge && isCorretor && <LeadsActionsBadge count={totalAcoesLeads} />}
                               {(item as any).showAlertasBadge && isGestorOuSuperior && <AlertasBadge count={totalAlertasEquipe} />}
+                              {(item as any).showAgendBadge && isCorretor && <AgendBadge count={agendamentosHojeCount} />}
                               {(item as any).showAlert && !desbloqueado && (
                                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>

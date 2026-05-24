@@ -5575,3 +5575,30 @@
 
 - [x] Oferta Ativa com Kanban: 4 novas tabelas (oferta_ativa, item_oferta_ativa, sessao_oferta, atribuicao_sessao), schema, migration SQL, router ofertaAtiva.ts, páginas OfertaAtiva/NovaOfertaAtiva/KanbanOfertaAtiva/SessoesOferta, rotas no App.tsx, menus no DashboardLayout, 7 testes passando
 - [x] Links Úteis: 2 novas tabelas (links_uteis, acessos_links_uteis), campo acessaLinksUteis na tabela users, schema, migration SQL, router linksUteis.ts, página LinksUteis, rotas no App.tsx, menus no DashboardLayout, 7 testes passando
+
+## Melhorias de UX - Sprint de Qualidade (24/05/2026)
+
+### Agendamentos.tsx
+- [x] Filtros avançados para gestor (filtrar por corretor, data, status)
+- [x] Botão "Confirmar Presença" com AlertDialog de confirmação
+- [x] AlertDialog antes de cancelar agendamento
+- [x] Link de telefone clicável (tel:) na listagem de agendamentos
+
+### Kanban.tsx
+- [x] Filtros avançados para gestor (por corretor, projeto, SLA crítico)
+- [x] Contador de leads por coluna com badge
+- [x] Filtro de SLA crítico (leads com mais de 48h sem atualização)
+
+### Propostas.tsx
+- [x] Filtros avançados de corretor, projeto e período
+- [x] Lógica de filtragem client-side para novos filtros
+
+### LeadsPorCorretor.tsx
+- [x] Botão "Exportar CSV" com todos os filtros ativos aplicados
+- [x] Exportação com BOM UTF-8 para compatibilidade com Excel
+- [x] Toast de confirmação ao exportar
+
+### DashboardLayout.tsx
+- [x] Badge ciano no ícone de Agendamentos mostrando quantidade de agendamentos do dia
+- [x] Badge visível apenas para corretores com agendamentos hoje
+- [x] Componente AgendBadge reutilizável
