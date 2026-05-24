@@ -6,8 +6,9 @@ import {
   Calendar, Maximize, RefreshCw, Users, Phone, MessageSquare,
   CalendarCheck, Eye, FileText, Briefcase, Activity, ChevronDown,
   Settings, Save, ArrowUp, ArrowDown, Minus, Minimize, Star,
-  Play, Pause, BarChart2, List, X,
+  Play, Pause, BarChart2, List, X, AlertTriangle,
 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,24 @@ import {
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, subDays, subWeeks, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+
+// ============================================================================
+// KPICardSkeleton — placeholder durante loading
+// ============================================================================
+function KPICardSkeleton() {
+  return (
+    <div className="rounded-xl p-4 border bg-slate-800/60 border-slate-600/50 backdrop-blur-sm">
+      <div className="flex items-start justify-between">
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-2.5 w-20 bg-slate-700/80" />
+          <Skeleton className="h-7 w-28 bg-slate-700/80" />
+          <Skeleton className="h-2 w-14 bg-slate-700/60" />
+        </div>
+        <Skeleton className="h-9 w-9 rounded-lg bg-slate-700/80 shrink-0" />
+      </div>
+    </div>
+  );
+}
 
 const TICKER_STYLE = `
 @keyframes ticker { from { transform: translateX(0) } to { transform: translateX(-50%) } }
@@ -412,14 +431,15 @@ function FunilConversao({ leads, agendamentos, visitas, contratos }: {
               <div className="flex items-center gap-3">
                 <span className="text-white font-bold tabular-nums">{step.value.toLocaleString('pt-BR')}</span>
                 {prevLabel && (
-                  <span className={`font-bold tabular-nums ${rateColor(rate)}`}>
-                    {rate}% de {prevLabel.split(' ')[0].toLowerCase()}
+                  <span className={`font-bold tabular-nums text-xs flex items-center gap-1 ${rateColor(rate)}`}>
+                    <span className="text-gray-500">({steps[i - 1].value.toLocaleString('pt-BR')} →)</span>
+                    {rate}%
                   </span>
                 )}
               </div>
             </div>
             <div
-              className="h-7 rounded-lg overflow-hidden bg-slate-800/60"
+              className={`h-7 rounded-lg overflow-hidden bg-slate-800/60 ${i > 0 ? (rate >= 30 ? 'ring-1 ring-emerald-500/20' : rate >= 10 ? 'ring-1 ring-amber-500/20' : 'ring-1 ring-red-500/20') : ''}`}
               style={{ width: '100%' }}
             >
               <div
@@ -1095,6 +1115,8 @@ export default function PerformanceTV() {
   const [selectedMes, setSelectedMes] = useState(() => new Date().getMonth() + 1);
   const [selectedAno, setSelectedAno] = useState(() => new Date().getFullYear());
   const [selectedEquipeId, setSelectedEquipeId] = useState<number | undefined>(undefined);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [isTabTransitioning, setIsTabTransitioning] = useState(false);
 
   const { data: equipes } = trpc.equipes.list.useQuery(undefined, {
     enabled: user?.role === 'admin' || user?.role === 'gestor' || user?.role === 'superintendente',
@@ -1102,14 +1124,14 @@ export default function PerformanceTV() {
 
   const dateRange = useMemo(() => getDateRangeForPeriod(periodo, customRange), [periodo, customRange]);
   const dateRangeInput = useMemo(() => ({ dataInicio: dateRange.from, dataFim: dateRange.to }), [dateRange.from?.getTime(), dateRange.to?.getTime()]);
-  const rankingVGVInput = useMemo(() => ({ dataInicio: dateRange.from || null, dataFim: dateRange.to || null }), [dateRange.from?.getTime(), dateRange.to?.getTime()]);
+  const rankingVGVInput = useMemo(() => ({ dataInicio: dateRange.from || null, dataFim: dateRange.to || null, mes: selectedMes, ano: selectedAno }), [dateRange.from?.getTime(), dateRange.to?.getTime(), selectedMes, selectedAno]);
 
-  const { data: rankingVGV, refetch: refetchVGV } = trpc.ranking.getCompleto.useQuery(rankingVGVInput);
-  const { data: rankingPeriodo, refetch: refetchPeriodo } = trpc.ranking.porPeriodo.useQuery(dateRangeInput);
-  const { data: dashboardData, refetch: refetchDashboard } = trpc.dashboardPerformance.getData.useQuery({
+  const { data: rankingVGV, isLoading: loadingVGV, refetch: refetchVGV } = trpc.ranking.getCompleto.useQuery(rankingVGVInput);
+  const { data: rankingPeriodo, isLoading: loadingPeriodo, refetch: refetchPeriodo } = trpc.ranking.porPeriodo.useQuery(dateRangeInput);
+  const { data: dashboardData, isLoading: loadingDashboard, refetch: refetchDashboard } = trpc.dashboardPerformance.getData.useQuery({
     mes: selectedMes, ano: selectedAno, equipeId: selectedEquipeId,
   });
-  const { data: evolucaoMensal, refetch: refetchEvolucao } = trpc.dashboardPerformance.evolucaoMensal.useQuery({
+  const { data: evolucaoMensal, isLoading: loadingEvolucao, refetch: refetchEvolucao } = trpc.dashboardPerformance.evolucaoMensal.useQuery({
     ano: selectedAno, equipeId: selectedEquipeId,
   });
 
@@ -1134,9 +1156,27 @@ export default function PerformanceTV() {
   useEffect(() => {
     const interval = setInterval(() => {
       refetchVGV(); refetchPeriodo(); refetchDashboard(); refetchEvolucao();
+      setLastUpdated(new Date());
     }, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [refetchVGV, refetchPeriodo, refetchDashboard, refetchEvolucao]);
+
+  // Marcar como atualizado quando os dados chegam pela primeira vez
+  useEffect(() => {
+    if (!loadingVGV && !loadingPeriodo && !loadingDashboard && !loadingEvolucao) {
+      setLastUpdated(new Date());
+    }
+  }, [loadingVGV, loadingPeriodo, loadingDashboard, loadingEvolucao]);
+
+  const handleTabChange = (tab: TabType) => {
+    if (tab === activeTab) return;
+    setIsTabTransitioning(true);
+    setTimeout(() => {
+      setActiveTab(tab);
+      setAutoRotate(false);
+      setIsTabTransitioning(false);
+    }, 150);
+  };
 
   // Melhoria 6: Auto-rotação
   useEffect(() => {
@@ -1183,7 +1223,9 @@ export default function PerformanceTV() {
   const rankingFormatado = useMemo(() =>
     rankingVGV?.map((item: any, index: number) => ({
       corretorId: item.corretorId, corretorNome: item.corretorNome, corretorFoto: item.corretorFoto,
-      vgvTotal: item.vgvTotal || 0, contratosFechados: item.contratosFechados || 0, posicao: index + 1,
+      vgvTotal: item.vgvTotal || 0, contratosFechados: item.contratosFechados || 0,
+      metaVGV: item.metaVGV || 0,
+      posicao: index + 1,
     })) || []
   , [rankingVGV]);
 
@@ -1267,6 +1309,27 @@ export default function PerformanceTV() {
     }
   }, [percentualAtingimento, faturamento]);
 
+  const ticketMedio = totalContratos > 0 ? totalVGV / totalContratos : 0;
+  const ticketMedioPrev = (resumoPrev?.totalContratos || 0) > 0 ? (resumoPrev?.totalVGV || 0) / resumoPrev!.totalContratos : 0;
+  const deltaTicketMedio = resumoPrev ? Math.round(ticketMedio - ticketMedioPrev) : undefined;
+
+  const taxaConversaoLeadContrato = (resumo?.totalLeads || 0) > 0
+    ? (resumo?.totalContratos || 0) / (resumo?.totalLeads || 1) * 100
+    : 0;
+
+  const isRecordeMes = useMemo(() => {
+    if (!evolucaoData || evolucaoData.length === 0) return false;
+    const maxHistorico = Math.max(...evolucaoData.map((m: any) => m.vgvRealizado || 0));
+    return faturamento > 0 && faturamento >= maxHistorico;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [faturamento, evolucaoData.length]);
+
+  const { corretoresComMeta, corretoresAtingiramMeta } = useMemo(() => {
+    const comMeta = corretoresDashboard.filter((c: any) => (c.metaVGV || 0) > 0);
+    const atingiram = comMeta.filter((c: any) => (c.vgv || 0) >= (c.metaVGV || 0));
+    return { corretoresComMeta: comMeta.length, corretoresAtingiramMeta: atingiram.length };
+  }, [corretoresDashboard]);
+
   const tendenciaMes = useMemo(() => {
     const hoje = new Date();
     const totalDiasMes = new Date(selectedAno, selectedMes, 0).getDate();
@@ -1325,9 +1388,9 @@ export default function PerformanceTV() {
               </div>
             </div>
 
-            {/* Tabs + Melhoria 6: dots de rotação */}
+            {/* Tabs + dots de rotação */}
             <div className="flex-1 flex flex-col items-center gap-1">
-              <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v as TabType); setAutoRotate(false); }}>
+              <Tabs value={activeTab} onValueChange={(v) => handleTabChange(v as TabType)}>
                 <TabsList className="bg-slate-800/60 border border-slate-700/50">
                   <TabsTrigger value="realxmeta" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-gray-300 text-xs sm:text-sm">
                     <Target className="w-4 h-4 mr-1.5" /> Real x Meta
@@ -1350,9 +1413,15 @@ export default function PerformanceTV() {
             </div>
 
             <div className="flex items-center gap-3 shrink-0">
-              <LiveClock />
+              <div className="hidden lg:flex flex-col items-end gap-0.5">
+                <LiveClock />
+                {lastUpdated && (
+                  <span className="text-[9px] text-gray-500 tabular-nums">
+                    ↻ {lastUpdated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-1.5">
-                {/* Melhoria 6: Auto-rotação button */}
                 <Button
                   variant="outline"
                   size="sm"
@@ -1363,8 +1432,8 @@ export default function PerformanceTV() {
                   {autoRotate ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
                   <span className="text-xs hidden sm:inline">{autoRotate ? 'Pausar' : 'Auto'}</span>
                 </Button>
-                <Button variant="outline" size="icon" onClick={() => { refetchVGV(); refetchPeriodo(); refetchDashboard(); refetchEvolucao(); }} className="bg-slate-800/50 border-slate-700/50 text-white hover:bg-slate-700/50 hover:text-white" title="Atualizar">
-                  <RefreshCw className="h-4 w-4" />
+                <Button variant="outline" size="icon" onClick={() => { refetchVGV(); refetchPeriodo(); refetchDashboard(); refetchEvolucao(); setLastUpdated(new Date()); }} className="bg-slate-800/50 border-slate-700/50 text-white hover:bg-slate-700/50 hover:text-white" title="Atualizar">
+                  <RefreshCw className={`h-4 w-4 ${(loadingVGV || loadingDashboard) ? 'animate-spin' : ''}`} />
                 </Button>
                 <Button variant="outline" size="icon" onClick={toggleFullscreen} className="bg-slate-800/50 border-slate-700/50 text-white hover:bg-slate-700/50 hover:text-white" title={isFullscreen ? 'Sair do fullscreen' : 'Tela cheia'}>
                   {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
@@ -1462,6 +1531,7 @@ export default function PerformanceTV() {
 
       {/* ===== CONTEÚDO POR ABA ===== */}
       <div className={`container mx-auto px-4 py-5 ${isFullscreen ? '' : 'pb-14'}`}>
+        <div className={`transition-all duration-200 ${isTabTransitioning ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'}`}>
 
         {/* ABA REAL x META */}
         {activeTab === 'realxmeta' && (
@@ -1476,37 +1546,64 @@ export default function PerformanceTV() {
                 <h3 className="text-xs text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                   <Target className="w-4 h-4 text-purple-400" /> Atingimento da Meta
                 </h3>
-                <div className="flex flex-col items-center gap-4">
-                  <GaugeChart percentage={percentualAtingimento} label="% Atingido" metaDefined={metaDefined} />
-                  <div className="w-full grid grid-cols-2 gap-3 text-center">
-                    <div className="bg-slate-800/50 rounded-xl p-3">
-                      <div className="text-xs text-gray-400 mb-1">Realizado</div>
-                      <div className="text-lg font-bold text-purple-300 tabular-nums">{formatCurrency(faturamento)}</div>
-                      {deltaVGV !== undefined && deltaVGV !== 0 && (
-                        <div className={`text-[10px] font-semibold ${deltaVGV > 0 ? 'text-emerald-400' : 'text-red-400'} flex items-center justify-center gap-0.5`}>
-                          {deltaVGV > 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
-                          {deltaVGV > 0 ? '+' : ''}{formatCurrency(deltaVGV)} vs ant.
-                        </div>
-                      )}
-                    </div>
-                    <div className="bg-slate-800/50 rounded-xl p-3">
-                      <div className="text-xs text-gray-400 mb-1">Meta</div>
-                      <div className="text-lg font-bold text-gray-300 tabular-nums">{metaDefined ? formatCurrency(metaVGV) : '—'}</div>
-                    </div>
-                    <div className="bg-slate-800/50 rounded-xl p-3">
-                      <div className="text-xs text-gray-400 mb-1">Gap</div>
-                      <div className={`text-base font-bold tabular-nums ${gapMeta > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                        {gapMeta > 0 ? '-' : '+'}{formatCurrency(Math.abs(gapMeta))}
-                      </div>
-                    </div>
-                    <div className="bg-slate-800/50 rounded-xl p-3">
-                      <div className="text-xs text-gray-400 mb-1">Tendência</div>
-                      <div className={`text-base font-bold tabular-nums ${tendenciaMes >= 100 ? 'text-emerald-400' : tendenciaMes >= 70 ? 'text-amber-400' : 'text-red-400'}`}>
-                        {metaDefined ? `${tendenciaMes}%` : '—'}
-                      </div>
+                {loadingDashboard ? (
+                  <div className="flex flex-col items-center gap-4">
+                    <Skeleton className="w-48 h-48 rounded-full bg-slate-700/60" />
+                    <div className="w-full grid grid-cols-2 gap-3">
+                      {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-xl bg-slate-700/60" />)}
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-4">
+                    <GaugeChart percentage={percentualAtingimento} label="% Atingido" metaDefined={metaDefined} />
+                    {corretoresComMeta > 0 && (
+                      <div className="text-[11px] text-center text-gray-400">
+                        <span className={corretoresAtingiramMeta === corretoresComMeta ? 'text-emerald-400 font-semibold' : ''}>{corretoresAtingiramMeta}</span>
+                        {' '}de {corretoresComMeta} corretores atingiram a meta individual
+                      </div>
+                    )}
+                    <div className="w-full grid grid-cols-2 gap-3 text-center">
+                      <div className="bg-slate-800/50 rounded-xl p-3">
+                        <div className="text-xs text-gray-400 mb-1">Realizado</div>
+                        <div className="text-lg font-bold text-purple-300 tabular-nums">{formatCurrency(faturamento)}</div>
+                        {deltaVGV !== undefined && deltaVGV !== 0 && (
+                          <div className={`text-[10px] font-semibold ${deltaVGV > 0 ? 'text-emerald-400' : 'text-red-400'} flex items-center justify-center gap-0.5`}>
+                            {deltaVGV > 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                            {deltaVGV > 0 ? '+' : ''}{formatCurrency(deltaVGV)} vs ant.
+                          </div>
+                        )}
+                      </div>
+                      <div className="bg-slate-800/50 rounded-xl p-3">
+                        <div className="text-xs text-gray-400 mb-1">Meta</div>
+                        <div className="text-lg font-bold text-gray-300 tabular-nums">{metaDefined ? formatCurrency(metaVGV) : '—'}</div>
+                      </div>
+                      <div className="bg-slate-800/50 rounded-xl p-3">
+                        <div className="text-xs text-gray-400 mb-1">Gap</div>
+                        <div className={`text-base font-bold tabular-nums ${gapMeta > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                          {gapMeta > 0 ? '-' : '+'}{formatCurrency(Math.abs(gapMeta))}
+                        </div>
+                      </div>
+                      <div className="bg-slate-800/50 rounded-xl p-3">
+                        <div className="text-xs text-gray-400 mb-1">Tendência</div>
+                        <div className={`text-base font-bold tabular-nums ${tendenciaMes >= 100 ? 'text-emerald-400' : tendenciaMes >= 70 ? 'text-amber-400' : 'text-red-400'}`}>
+                          {metaDefined ? `${tendenciaMes}%` : '—'}
+                        </div>
+                      </div>
+                    </div>
+                    {(resumo?.totalDistratos || 0) > 0 && (
+                      <div className="w-full bg-red-900/20 border border-red-500/30 rounded-xl p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] uppercase tracking-wider font-semibold text-red-300 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" /> Distratos
+                          </span>
+                          <span className="text-base font-bold text-red-400">{resumo?.totalDistratos}</span>
+                        </div>
+                        <div className="text-[10px] text-red-400">{formatCurrency(resumo?.vgvDistratos || 0)} em VGV distratado</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">VGV Líquido: <span className="text-white font-semibold">{formatCurrency(resumo?.vgvLiquido ?? faturamento)}</span></div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Evolução mensal */}
@@ -1517,38 +1614,46 @@ export default function PerformanceTV() {
                 <AtingimentoMensalChart data={evolucaoData} />
               </div>
 
-              {/* KPIs do mês + Show Rate (Melhoria 2) */}
+              {/* KPIs do mês + Show Rate */}
               <div className="bg-slate-900/60 rounded-2xl border border-slate-800/50 p-5 space-y-4">
                 <h3 className="text-xs text-gray-400 uppercase tracking-wider flex items-center gap-2">
                   <Star className="w-4 h-4 text-purple-400" /> Indicadores do Mês
                 </h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <KPICard label="Contratos" value={(resumo?.totalContratos || 0).toString()} numericValue={resumo?.totalContratos || 0} icon={FileCheck} variant="success" delta={deltaContratos} />
-                  <KPICard label="Leads" value={(resumo?.totalLeads || 0).toString()} numericValue={resumo?.totalLeads || 0} icon={Users} variant="info" />
-                  <KPICard label="Agendamentos" value={(resumo?.totalAgendamentos || 0).toString()} numericValue={resumo?.totalAgendamentos || 0} icon={CalendarCheck} variant="accent" />
-                  <KPICard label="Visitas" value={(resumo?.totalVisitas || 0).toString()} numericValue={resumo?.totalVisitas || 0} icon={Eye} variant="warning" />
-                </div>
-                {/* Show Rate card */}
-                {showRateGeral && (
-                  <div className={`rounded-xl border p-3 ${showRateGeral.taxa >= 70 ? 'bg-emerald-900/30 border-emerald-500/40' : showRateGeral.taxa >= 50 ? 'bg-amber-900/30 border-amber-500/40' : 'bg-red-900/30 border-red-500/40'}`}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] uppercase tracking-wider font-semibold text-gray-300">Show Rate</span>
-                      <span className={`text-xl font-bold tabular-nums ${showRateGeral.taxa >= 70 ? 'text-emerald-300' : showRateGeral.taxa >= 50 ? 'text-amber-300' : 'text-red-300'}`}>
-                        {showRateGeral.taxa}%
-                      </span>
+                {loadingDashboard ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {Array.from({ length: 4 }).map((_, i) => <KPICardSkeleton key={i} />)}
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <KPICard label="Contratos" value={(resumo?.totalContratos || 0).toString()} numericValue={resumo?.totalContratos || 0} icon={FileCheck} variant="success" delta={deltaContratos} />
+                      <KPICard label="Leads" value={(resumo?.totalLeads || 0).toString()} numericValue={resumo?.totalLeads || 0} icon={Users} variant="info" />
+                      <KPICard label="Agendamentos" value={(resumo?.totalAgendamentos || 0).toString()} numericValue={resumo?.totalAgendamentos || 0} icon={CalendarCheck} variant="accent" />
+                      <KPICard label="Visitas" value={(resumo?.totalVisitas || 0).toString()} numericValue={resumo?.totalVisitas || 0} icon={Eye} variant="warning" />
                     </div>
-                    <div className="text-[10px] text-gray-400 mb-2">{showRateGeral.totalRealizados} de {showRateGeral.totalTotal} agendamentos compareceram</div>
-                    {showRateGeral.top3.length > 0 && (
-                      <div className="space-y-1">
-                        {showRateGeral.top3.map((c: any, i: number) => (
-                          <div key={i} className="flex justify-between text-[10px]">
-                            <span className="text-gray-400 truncate max-w-[120px]">{c.corretorNome?.split(' ')[0]}</span>
-                            <span className="text-emerald-400 font-semibold">{Math.round((c.taxaShow || 0) * 100)}%</span>
+                    {/* Show Rate card */}
+                    {showRateGeral && (
+                      <div className={`rounded-xl border p-3 ${showRateGeral.taxa >= 70 ? 'bg-emerald-900/30 border-emerald-500/40' : showRateGeral.taxa >= 50 ? 'bg-amber-900/30 border-amber-500/40' : 'bg-red-900/30 border-red-500/40'}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] uppercase tracking-wider font-semibold text-gray-300">Show Rate</span>
+                          <span className={`text-xl font-bold tabular-nums ${showRateGeral.taxa >= 70 ? 'text-emerald-300' : showRateGeral.taxa >= 50 ? 'text-amber-300' : 'text-red-300'}`}>
+                            {showRateGeral.taxa}%
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-gray-400 mb-2">{showRateGeral.totalRealizados} de {showRateGeral.totalTotal} agendamentos compareceram</div>
+                        {showRateGeral.top3.length > 0 && (
+                          <div className="space-y-1">
+                            {showRateGeral.top3.map((c: any, i: number) => (
+                              <div key={i} className="flex justify-between text-[10px]">
+                                <span className="text-gray-400 truncate max-w-[120px]">{c.corretorNome?.split(' ')[0]}</span>
+                                <span className="text-emerald-400 font-semibold">{Math.round(c.taxaShow || 0)}%</span>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        )}
                       </div>
                     )}
-                  </div>
+                  </>
                 )}
               </div>
             </div>
@@ -1571,21 +1676,39 @@ export default function PerformanceTV() {
         {/* ABA VGV / VENDAS */}
         {activeTab === 'vgv' && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-5">
-              <KPICard label="Meta" value={metaDefined ? formatCurrency(metaVGV) : 'Não definida'} icon={Target} variant="info" />
-              <KPICard label="Faturamento" value={formatCurrency(totalVGV)} numericValue={totalVGV} icon={DollarSign} variant="success" highlight delta={deltaVGV} />
-              <KPICard label="Realizado" value={`${metaDefined && totalVGV > 0 ? Math.round((totalVGV / metaVGV) * 100) : 0}%`} numericValue={metaDefined && totalVGV > 0 ? Math.round((totalVGV / metaVGV) * 100) : 0} icon={TrendingUp} variant={totalVGV >= metaVGV && metaDefined ? "success" : totalVGV >= metaVGV * 0.5 ? "warning" : "danger"} />
-              <KPICard label="Gap da Meta" value={formatCurrency(Math.abs(metaVGV - totalVGV))} subValue={metaVGV - totalVGV > 0 ? "faltam" : "excedido"} icon={Target} variant={metaVGV - totalVGV > 0 ? "warning" : "success"} />
-              <KPICard label="Tendência" value={`${tendenciaMes}%`} numericValue={tendenciaMes} subValue="projeção do mês" icon={TrendingUp} variant={tendenciaMes >= 100 ? "success" : tendenciaMes >= 70 ? "accent" : "warning"} />
-              <KPICard label="Contratos" value={totalContratos.toString()} numericValue={totalContratos} icon={FileCheck} variant="success" delta={deltaContratos} />
-              <KPICard label="Corretores" value={totalCorretores.toString()} numericValue={totalCorretores} icon={Users} variant="info" />
-            </div>
+            {isRecordeMes && (
+              <div className="mb-3 inline-flex items-center gap-2 px-3 py-1.5 bg-yellow-500/20 border border-yellow-500/40 rounded-full text-xs font-bold text-yellow-300">
+                🏆 Recorde histórico de VGV este mês!
+              </div>
+            )}
+            {loadingVGV || loadingDashboard ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-5">
+                {Array.from({ length: 8 }).map((_, i) => <KPICardSkeleton key={i} />)}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-5">
+                <KPICard label="Meta" value={metaDefined ? formatCurrency(metaVGV) : 'Não definida'} icon={Target} variant="info" />
+                <KPICard label="Faturamento" value={formatCurrency(totalVGV)} numericValue={totalVGV} icon={DollarSign} variant="success" highlight delta={deltaVGV} />
+                <KPICard label="Realizado" value={`${metaDefined && totalVGV > 0 ? Math.round((totalVGV / metaVGV) * 100) : 0}%`} numericValue={metaDefined && totalVGV > 0 ? Math.round((totalVGV / metaVGV) * 100) : 0} icon={TrendingUp} variant={totalVGV >= metaVGV && metaDefined ? "success" : totalVGV >= metaVGV * 0.5 ? "warning" : "danger"} />
+                <KPICard label="Gap da Meta" value={formatCurrency(Math.abs(metaVGV - totalVGV))} subValue={metaVGV - totalVGV > 0 ? "faltam" : "excedido"} icon={Target} variant={metaVGV - totalVGV > 0 ? "warning" : "success"} />
+                <KPICard label="Tendência" value={`${tendenciaMes}%`} numericValue={tendenciaMes} subValue="projeção do mês" icon={TrendingUp} variant={tendenciaMes >= 100 ? "success" : tendenciaMes >= 70 ? "accent" : "warning"} />
+                <KPICard label="Contratos" value={totalContratos.toString()} numericValue={totalContratos} icon={FileCheck} variant="success" delta={deltaContratos} />
+                <KPICard label="Ticket Médio" value={formatCurrency(ticketMedio)} numericValue={Math.round(ticketMedio)} icon={DollarSign} variant="accent" delta={deltaTicketMedio} />
+                <KPICard label="Corretores" value={totalCorretores.toString()} numericValue={totalCorretores} icon={Users} variant="info" />
+              </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
               <div className="lg:col-span-2 space-y-5">
                 <div className="bg-slate-900/60 rounded-2xl border border-slate-800/50 p-5">
                   <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><Trophy className="w-5 h-5 text-yellow-400" /> TOP PERFORMERS — VGV</h2>
-                  <PodiumVisual ranking={rankingFormatado} type="vgv" onCorretorClick={setSelectedCorretorId} />
+                  {loadingVGV ? (
+                    <div className="flex items-end justify-center gap-4 py-4">
+                      {[96, 112, 80].map((h, i) => <Skeleton key={i} className={`w-24 bg-slate-700/60 rounded-lg`} style={{ height: h }} />)}
+                    </div>
+                  ) : (
+                    <PodiumVisual ranking={rankingFormatado} type="vgv" onCorretorClick={setSelectedCorretorId} />
+                  )}
                 </div>
                 <div className="bg-slate-900/60 rounded-2xl border border-slate-800/50 p-5">
                   <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-cyan-400" /> RANKING DE EQUIPES</h2>
@@ -1594,7 +1717,13 @@ export default function PerformanceTV() {
               </div>
               <div className="bg-slate-900/60 rounded-2xl border border-slate-800/50 p-5">
                 <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-cyan-400" /> RANKING VGV</h2>
-                <RankingLateral ranking={rankingFormatado} type="vgv" positionChanges={positionChanges} onCorretorClick={setSelectedCorretorId} />
+                {loadingVGV ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-10 w-full bg-slate-700/60 rounded-lg" />)}
+                  </div>
+                ) : (
+                  <RankingLateral ranking={rankingFormatado} type="vgv" positionChanges={positionChanges} onCorretorClick={setSelectedCorretorId} />
+                )}
               </div>
             </div>
           </>
@@ -1603,35 +1732,62 @@ export default function PerformanceTV() {
         {/* ABA PRODUTIVIDADE */}
         {activeTab === 'produtividade' && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-5">
-              <KPICard label="Ligações" value={totalLigacoes.toString()} numericValue={totalLigacoes} icon={Phone} variant="info" />
-              <KPICard label="WhatsApp" value={totalWhatsapp.toString()} numericValue={totalWhatsapp} icon={MessageSquare} variant="success" />
-              <KPICard label="Agendamentos" value={totalAgendamentos.toString()} numericValue={totalAgendamentos} icon={CalendarCheck} variant="accent" />
-              <KPICard label="Visitas" value={totalVisitas.toString()} numericValue={totalVisitas} icon={Eye} variant="warning" />
-              <KPICard label="Documentações" value={totalDocumentacoes.toString()} numericValue={totalDocumentacoes} icon={FileText} variant="success" />
-              <KPICard label="Pontuação Total" value={totalPontos.toString()} numericValue={totalPontos} icon={Trophy} variant="accent" highlight />
-              <KPICard label="Ativos" value={rankingProdutividade.filter((r: any) => r.pontuacaoTotal > 0).length.toString()} numericValue={rankingProdutividade.filter((r: any) => r.pontuacaoTotal > 0).length} icon={Users} variant="info" />
-            </div>
+            {loadingPeriodo || loadingDashboard ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-5">
+                {Array.from({ length: 8 }).map((_, i) => <KPICardSkeleton key={i} />)}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-5">
+                <KPICard label="Ligações" value={totalLigacoes.toString()} numericValue={totalLigacoes} icon={Phone} variant="info" />
+                <KPICard label="WhatsApp" value={totalWhatsapp.toString()} numericValue={totalWhatsapp} icon={MessageSquare} variant="success" />
+                <KPICard label="Agendamentos" value={totalAgendamentos.toString()} numericValue={totalAgendamentos} icon={CalendarCheck} variant="accent" />
+                <KPICard label="Visitas" value={totalVisitas.toString()} numericValue={totalVisitas} icon={Eye} variant="warning" />
+                <KPICard label="Documentações" value={totalDocumentacoes.toString()} numericValue={totalDocumentacoes} icon={FileText} variant="success" />
+                <KPICard label="Pontuação Total" value={totalPontos.toString()} numericValue={totalPontos} icon={Trophy} variant="accent" highlight />
+                <KPICard label="Ativos" value={rankingProdutividade.filter((r: any) => r.pontuacaoTotal > 0).length.toString()} numericValue={rankingProdutividade.filter((r: any) => r.pontuacaoTotal > 0).length} icon={Users} variant="info" />
+                <KPICard
+                  label="Conversão Lead"
+                  value={`${taxaConversaoLeadContrato.toFixed(1)}%`}
+                  numericValue={taxaConversaoLeadContrato}
+                  icon={TrendingUp}
+                  variant={taxaConversaoLeadContrato >= 3 ? "success" : taxaConversaoLeadContrato >= 1 ? "warning" : "danger"}
+                />
+              </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
               <div className="lg:col-span-2 space-y-5">
-                {/* Melhoria 1: Funil de conversão */}
+                {/* Funil de conversão */}
                 <div className="bg-slate-900/60 rounded-2xl border border-slate-800/50 p-5">
                   <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><Activity className="w-5 h-5 text-cyan-400" /> FUNIL DE CONVERSÃO</h2>
-                  <FunilConversao
-                    leads={resumo?.totalLeads || 0}
-                    agendamentos={resumo?.totalAgendamentos || 0}
-                    visitas={resumo?.totalVisitas || 0}
-                    contratos={resumo?.totalContratos || 0}
-                  />
+                  {loadingDashboard ? (
+                    <div className="space-y-3">
+                      {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full bg-slate-700/60" />)}
+                    </div>
+                  ) : (
+                    <FunilConversao
+                      leads={resumo?.totalLeads || 0}
+                      agendamentos={resumo?.totalAgendamentos || 0}
+                      visitas={resumo?.totalVisitas || 0}
+                      contratos={resumo?.totalContratos || 0}
+                    />
+                  )}
                 </div>
 
                 <div className="bg-slate-900/60 rounded-2xl border border-slate-800/50 p-5">
                   <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><Trophy className="w-5 h-5 text-yellow-400" /> TOP PERFORMERS — PRODUTIVIDADE</h2>
-                  <PodiumVisual ranking={rankingProdutividade} type="produtividade" onCorretorClick={setSelectedCorretorId} />
+                  {loadingPeriodo ? (
+                    <div className="flex items-end justify-center gap-6 h-40">
+                      <Skeleton className="h-28 w-20 bg-slate-700/60 rounded-t-lg" />
+                      <Skeleton className="h-40 w-20 bg-slate-700/60 rounded-t-lg" />
+                      <Skeleton className="h-20 w-20 bg-slate-700/60 rounded-t-lg" />
+                    </div>
+                  ) : (
+                    <PodiumVisual ranking={rankingProdutividade} type="produtividade" onCorretorClick={setSelectedCorretorId} />
+                  )}
                 </div>
 
-                {/* Melhoria 7: Heat Map na tabela */}
+                {/* Heat Map na tabela */}
                 <div className="bg-slate-900/60 rounded-2xl border border-slate-800/50 p-5 overflow-x-auto">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-bold text-white flex items-center gap-2"><Activity className="w-5 h-5 text-emerald-400" /> ATIVIDADES DO PERÍODO</h2>
@@ -1641,57 +1797,70 @@ export default function PerformanceTV() {
                       <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-red-900/20 border border-red-500/30 inline-block" /> Bottom</span>
                     </div>
                   </div>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-gray-400 border-b border-slate-700/50 text-xs uppercase tracking-wider">
-                        <th className="text-left py-2 px-2">#</th>
-                        <th className="text-left py-2 px-2">Corretor</th>
-                        <th className="text-center py-2 px-2">Tel</th>
-                        <th className="text-center py-2 px-2">Wpp</th>
-                        <th className="text-center py-2 px-2">Agd</th>
-                        <th className="text-center py-2 px-2">Vis</th>
-                        <th className="text-center py-2 px-2">Doc</th>
-                        <th className="text-center py-2 px-2 text-emerald-400">Vnd</th>
-                        <th className="text-right py-2 px-2">Pts</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rankingProdutividade.slice(0, 10).map((item: any, index: number) => (
-                        <tr
-                          key={item.corretorId || index}
-                          className={`border-b border-slate-800/30 ${index < 3 ? 'bg-slate-800/20' : ''} cursor-pointer hover:bg-slate-800/30 transition-colors`}
-                          onClick={() => item.corretorId && setSelectedCorretorId(item.corretorId)}
-                        >
-                          <td className={`py-2 px-2 font-bold ${index === 0 ? 'text-yellow-400' : index === 1 ? 'text-gray-300' : index === 2 ? 'text-amber-400' : 'text-gray-500'}`}>{index + 1}º</td>
-                          <td className="py-2 px-2 text-white">{item.corretorNome?.split(' ')[0] || 'Corretor'}</td>
-                          <td className={`py-2 px-2 text-center tabular-nums rounded ${getHeatColor(item.ligacoesRealizadas, heatCols.tel)}`}>{item.ligacoesRealizadas}</td>
-                          <td className={`py-2 px-2 text-center tabular-nums rounded ${getHeatColor(item.whatsappEnviados, heatCols.wpp)}`}>{item.whatsappEnviados}</td>
-                          <td className={`py-2 px-2 text-center tabular-nums rounded ${getHeatColor(item.agendamentosConfirmados, heatCols.agd)}`}>{item.agendamentosConfirmados}</td>
-                          <td className={`py-2 px-2 text-center tabular-nums rounded ${getHeatColor(item.visitasRealizadas, heatCols.vis)}`}>{item.visitasRealizadas}</td>
-                          <td className={`py-2 px-2 text-center tabular-nums rounded ${getHeatColor(item.analiseCreditoEnviadas, heatCols.doc)}`}>{item.analiseCreditoEnviadas}</td>
-                          <td className="py-2 px-2 text-center">
-                            {item.vendasFechadas > 0 ? (
-                              <span className="inline-flex items-center gap-0.5 font-bold text-emerald-400">
-                                <span className="text-xs">🏆</span>{item.vendasFechadas}
-                              </span>
-                            ) : (
-                              <span className="text-gray-600">—</span>
-                            )}
-                          </td>
-                          <td className={`py-2 px-2 text-right font-bold tabular-nums rounded ${getHeatColor(item.pontuacaoTotal, heatCols.pts)}`}>{item.pontuacaoTotal}</td>
+                  {loadingPeriodo ? (
+                    <div className="space-y-2">
+                      {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-10 w-full bg-slate-700/60" />)}
+                    </div>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-gray-400 border-b border-slate-700/50 text-xs uppercase tracking-wider">
+                          <th className="text-left py-2 px-2">#</th>
+                          <th className="text-left py-2 px-2">Corretor</th>
+                          <th className="text-center py-2 px-2">Tel</th>
+                          <th className="text-center py-2 px-2">Wpp</th>
+                          <th className="text-center py-2 px-2">Agd</th>
+                          <th className="text-center py-2 px-2">Vis</th>
+                          <th className="text-center py-2 px-2">Doc</th>
+                          <th className="text-center py-2 px-2 text-emerald-400">Vnd</th>
+                          <th className="text-right py-2 px-2">Pts</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {rankingProdutividade.slice(0, 10).map((item: any, index: number) => (
+                          <tr
+                            key={item.corretorId || index}
+                            className={`border-b border-slate-800/30 ${index < 3 ? 'bg-slate-800/20' : ''} cursor-pointer hover:bg-slate-800/30 transition-colors`}
+                            onClick={() => item.corretorId && setSelectedCorretorId(item.corretorId)}
+                          >
+                            <td className={`py-2 px-2 font-bold ${index === 0 ? 'text-yellow-400' : index === 1 ? 'text-gray-300' : index === 2 ? 'text-amber-400' : 'text-gray-500'}`}>{index + 1}º</td>
+                            <td className="py-2 px-2 text-white">{item.corretorNome?.split(' ')[0] || 'Corretor'}</td>
+                            <td className={`py-2 px-2 text-center tabular-nums rounded ${getHeatColor(item.ligacoesRealizadas, heatCols.tel)}`}>{item.ligacoesRealizadas}</td>
+                            <td className={`py-2 px-2 text-center tabular-nums rounded ${getHeatColor(item.whatsappEnviados, heatCols.wpp)}`}>{item.whatsappEnviados}</td>
+                            <td className={`py-2 px-2 text-center tabular-nums rounded ${getHeatColor(item.agendamentosConfirmados, heatCols.agd)}`}>{item.agendamentosConfirmados}</td>
+                            <td className={`py-2 px-2 text-center tabular-nums rounded ${getHeatColor(item.visitasRealizadas, heatCols.vis)}`}>{item.visitasRealizadas}</td>
+                            <td className={`py-2 px-2 text-center tabular-nums rounded ${getHeatColor(item.analiseCreditoEnviadas, heatCols.doc)}`}>{item.analiseCreditoEnviadas}</td>
+                            <td className="py-2 px-2 text-center">
+                              {item.vendasFechadas > 0 ? (
+                                <span className="inline-flex items-center gap-0.5 font-bold text-emerald-400">
+                                  <span className="text-xs">🏆</span>{item.vendasFechadas}
+                                </span>
+                              ) : (
+                                <span className="text-gray-600">—</span>
+                              )}
+                            </td>
+                            <td className={`py-2 px-2 text-right font-bold tabular-nums rounded ${getHeatColor(item.pontuacaoTotal, heatCols.pts)}`}>{item.pontuacaoTotal}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </div>
               <div className="bg-slate-900/60 rounded-2xl border border-slate-800/50 p-5">
                 <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-emerald-400" /> RANKING PONTUAÇÃO</h2>
-                <RankingLateral ranking={rankingProdutividade} type="produtividade" positionChanges={positionChanges} onCorretorClick={setSelectedCorretorId} />
+                {loadingPeriodo ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-10 w-full bg-slate-700/60" />)}
+                  </div>
+                ) : (
+                  <RankingLateral ranking={rankingProdutividade} type="produtividade" positionChanges={positionChanges} onCorretorClick={setSelectedCorretorId} />
+                )}
               </div>
             </div>
           </>
         )}
+        </div>{/* fim transition wrapper */}
       </div>
 
       {!isFullscreen && <SalesTickerBanner ranking={rankingFormatado} />}
