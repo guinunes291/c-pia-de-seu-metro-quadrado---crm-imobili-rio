@@ -1874,67 +1874,56 @@ export async function getEstatisticasPorCorretor(corretoresIds?: number[] | null
       .where(eq(users.role, 'corretor'));
   }
   
-  const estatisticas = await Promise.all(corretores.map(async (corretor) => {
-    // Total de leads
-    const totalLeads = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(eq(leads.corretorId, corretor.id));
-    
-    // Leads por status
-    const leadsNovos = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'novo')));
-    
-    const leadsAguardando = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'aguardando_atendimento')));
-    
-    const leadsEmAtendimento = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'em_atendimento')));
-    
-    const leadsAgendados = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'agendado')));
-    
-    const leadsVisitou = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'visita_realizada')));
-    
-    const leadsAnalise = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'analise_credito')));
-    
-    const leadsContrato = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'contrato_fechado')));
-    
-    const leadsPerdidos = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'perdido')));
-    
-    const total = Number(totalLeads[0]?.count || 0);
-    const contratos = Number(leadsContrato[0]?.count || 0);
+  // Single GROUP BY query replaces 8 queries per corretor (8N → 1)
+  const corretorIds = corretores.map((c) => c.id);
+  const countRows = corretorIds.length
+    ? await db
+        .select({
+          corretorId: leads.corretorId,
+          status: leads.status,
+          count: sql<number>`count(*)`,
+        })
+        .from(leads)
+        .where(
+          and(
+            eq(leads.naLixeira, false),
+            inArray(leads.corretorId, corretorIds),
+          ),
+        )
+        .groupBy(leads.corretorId, leads.status)
+    : [];
+
+  // Build lookup: corretorId → status → count
+  const countMap = new Map<number, Record<string, number>>();
+  for (const row of countRows) {
+    if (!row.corretorId) continue;
+    if (!countMap.has(row.corretorId)) countMap.set(row.corretorId, {});
+    countMap.get(row.corretorId)![row.status] = Number(row.count);
+  }
+
+  const estatisticas = corretores.map((corretor) => {
+    const statusCounts = countMap.get(corretor.id) ?? {};
+    const total = Object.values(statusCounts).reduce((s, v) => s + v, 0);
+    const contratos = statusCounts['contrato_fechado'] ?? 0;
     const taxaConversao = total > 0 ? (contratos / total) * 100 : 0;
-    
     return {
       id: corretor.id,
       nome: corretor.name || 'Sem nome',
       email: corretor.email || '',
       status: corretor.status || 'ausente',
       totalLeads: total,
-      novos: Number(leadsNovos[0]?.count || 0),
-      aguardando: Number(leadsAguardando[0]?.count || 0),
-      emAtendimento: Number(leadsEmAtendimento[0]?.count || 0),
-      agendados: Number(leadsAgendados[0]?.count || 0),
-      visitou: Number(leadsVisitou[0]?.count || 0),
-      analise: Number(leadsAnalise[0]?.count || 0),
+      novos: statusCounts['novo'] ?? 0,
+      aguardando: statusCounts['aguardando_atendimento'] ?? 0,
+      emAtendimento: statusCounts['em_atendimento'] ?? 0,
+      agendados: statusCounts['agendado'] ?? 0,
+      visitou: statusCounts['visita_realizada'] ?? 0,
+      analise: statusCounts['analise_credito'] ?? 0,
       contratos,
-      perdidos: Number(leadsPerdidos[0]?.count || 0),
+      perdidos: statusCounts['perdido'] ?? 0,
       taxaConversao: taxaConversao.toFixed(1),
     };
-  }));
-  
+  });
+
   return estatisticas;
 }
 
@@ -4935,17 +4924,32 @@ export async function getRankingDia(data?: Date) {
     .from(users)
     .where(inArray(users.role, ['corretor', 'gestor', 'superintendente', 'admin']));
   
-  // Para cada usuário, buscar suas atividades do dia
-  const ranking = await Promise.all(todosCorretores.map(async (corretor) => {
-    // Buscar atividades do corretor no dia (usando DATE para ignorar horário)
-    const atividadesCorretor = await db.select()
+  const corretorIds = todosCorretores.map((c) => c.corretorId);
+  if (corretorIds.length === 0) return [];
+
+  // Single query for all activities on that day (replaces N per-corretor queries)
+  const [todasAtividades, todasMetas] = await Promise.all([
+    db.select()
       .from(atividadesDiarias)
       .where(and(
-        eq(atividadesDiarias.corretorId, corretor.corretorId),
+        inArray(atividadesDiarias.corretorId, corretorIds),
         sql`DATE(${atividadesDiarias.data}) = DATE(${inicioDia})`
-      ));
-    
-    // Somar todas as atividades do corretor no dia
+      )),
+    db.select()
+      .from(metas)
+      .where(inArray(metas.corretorId, corretorIds)),
+  ]);
+
+  // Build lookup maps
+  const atividadesMap = new Map<number, typeof todasAtividades>();
+  for (const ativ of todasAtividades) {
+    if (!atividadesMap.has(ativ.corretorId)) atividadesMap.set(ativ.corretorId, []);
+    atividadesMap.get(ativ.corretorId)!.push(ativ);
+  }
+  const metasMap = new Map(todasMetas.map((m) => [m.corretorId, m]));
+
+  const ranking = todosCorretores.map((corretor) => {
+    const atividadesCorretor = atividadesMap.get(corretor.corretorId) ?? [];
     const totais = atividadesCorretor.reduce((acc, ativ) => ({
       ligacoesRealizadas: acc.ligacoesRealizadas + ativ.ligacoesRealizadas,
       ligacoesAtendidas: acc.ligacoesAtendidas + ativ.ligacoesAtendidas,
@@ -4971,15 +4975,8 @@ export async function getRankingDia(data?: Date) {
       vgvDia: 0,
       pontuacaoTotal: 0,
     });
-    
-    // Buscar metas do corretor
-    const metasCorretor = await db.select()
-      .from(metas)
-      .where(eq(metas.corretorId, corretor.corretorId))
-      .limit(1);
-    
-    const meta = metasCorretor[0];
-    
+
+    const meta = metasMap.get(corretor.corretorId);
     return {
       id: corretor.corretorId,
       corretorId: corretor.corretorId,
@@ -4993,8 +4990,8 @@ export async function getRankingDia(data?: Date) {
         contratosMeta: Math.ceil(meta.metaContratos / 22) || 0,
       } : null
     };
-  }));
-  
+  });
+
   // Ordenar por pontuação (maior para menor)
   return ranking.sort((a, b) => b.pontuacaoTotal - a.pontuacaoTotal);
 }
@@ -5074,17 +5071,27 @@ export async function getRankingSemanal() {
     .from(users)
     .where(eq(users.role, 'corretor'));
   
-  // Para cada corretor, buscar suas atividades da semana
-  const ranking = await Promise.all(todosCorretores.map(async (corretor) => {
-    const atividadesCorretor = await db.select()
-      .from(atividadesDiarias)
-      .where(and(
-        eq(atividadesDiarias.corretorId, corretor.corretorId),
-        gte(atividadesDiarias.data, inicioSemana)
-      ));
-    
-    // Somar todas as atividades
-    const totais = atividadesCorretor.reduce((acc, ativ) => ({
+  // Single query for all corretores (replaces N per-corretor queries)
+  const corretorIdsSem = todosCorretores.map((c) => c.corretorId);
+  const atividadesSemana = corretorIdsSem.length
+    ? await db.select()
+        .from(atividadesDiarias)
+        .where(and(
+          inArray(atividadesDiarias.corretorId, corretorIdsSem),
+          gte(atividadesDiarias.data, inicioSemana),
+        ))
+    : [];
+
+  // Group by corretorId in memory
+  const atividadesMapSem = new Map<number, typeof atividadesSemana>();
+  for (const ativ of atividadesSemana) {
+    if (!atividadesMapSem.has(ativ.corretorId)) atividadesMapSem.set(ativ.corretorId, []);
+    atividadesMapSem.get(ativ.corretorId)!.push(ativ);
+  }
+
+  const ranking = todosCorretores.map((corretor) => {
+    const ativs = atividadesMapSem.get(corretor.corretorId) ?? [];
+    const totais = ativs.reduce((acc, ativ) => ({
       totalLigacoes: acc.totalLigacoes + ativ.ligacoesRealizadas,
       totalAgendamentos: acc.totalAgendamentos + ativ.agendamentosConfirmados,
       totalVisitas: acc.totalVisitas + ativ.visitasRealizadas,
@@ -5092,25 +5099,10 @@ export async function getRankingSemanal() {
       totalContratos: acc.totalContratos + ativ.contratosFechados,
       totalVgv: acc.totalVgv + ativ.vgvDia,
       totalPontos: acc.totalPontos + ativ.pontuacaoTotal,
-    }), {
-      totalLigacoes: 0,
-      totalAgendamentos: 0,
-      totalVisitas: 0,
-      totalDocumentacoes: 0,
-      totalContratos: 0,
-      totalVgv: 0,
-      totalPontos: 0,
-    });
-    
-    return {
-      corretorId: corretor.corretorId,
-      corretorNome: corretor.corretorNome,
-      corretorFoto: corretor.corretorFoto,
-      ...totais,
-    };
-  }));
-  
-  // Ordenar por pontuação (maior para menor)
+    }), { totalLigacoes: 0, totalAgendamentos: 0, totalVisitas: 0, totalDocumentacoes: 0, totalContratos: 0, totalVgv: 0, totalPontos: 0 });
+    return { corretorId: corretor.corretorId, corretorNome: corretor.corretorNome, corretorFoto: corretor.corretorFoto, ...totais };
+  });
+
   return ranking.sort((a, b) => b.totalPontos - a.totalPontos);
 }
 
@@ -5132,17 +5124,26 @@ export async function getRankingMensal() {
     .from(users)
     .where(eq(users.role, 'corretor'));
   
-  // Para cada corretor, buscar suas atividades do mês
-  const ranking = await Promise.all(todosCorretores.map(async (corretor) => {
-    const atividadesCorretor = await db.select()
-      .from(atividadesDiarias)
-      .where(and(
-        eq(atividadesDiarias.corretorId, corretor.corretorId),
-        gte(atividadesDiarias.data, inicioMes)
-      ));
-    
-    // Somar todas as atividades
-    const totais = atividadesCorretor.reduce((acc, ativ) => ({
+  // Single query for all corretores of the month (replaces N per-corretor queries)
+  const corretorIdsMes = todosCorretores.map((c) => c.corretorId);
+  const atividadesMes = corretorIdsMes.length
+    ? await db.select()
+        .from(atividadesDiarias)
+        .where(and(
+          inArray(atividadesDiarias.corretorId, corretorIdsMes),
+          gte(atividadesDiarias.data, inicioMes),
+        ))
+    : [];
+
+  const atividadesMapMes = new Map<number, typeof atividadesMes>();
+  for (const ativ of atividadesMes) {
+    if (!atividadesMapMes.has(ativ.corretorId)) atividadesMapMes.set(ativ.corretorId, []);
+    atividadesMapMes.get(ativ.corretorId)!.push(ativ);
+  }
+
+  const ranking = todosCorretores.map((corretor) => {
+    const ativs = atividadesMapMes.get(corretor.corretorId) ?? [];
+    const totais = ativs.reduce((acc, ativ) => ({
       totalLigacoes: acc.totalLigacoes + ativ.ligacoesRealizadas,
       totalAgendamentos: acc.totalAgendamentos + ativ.agendamentosConfirmados,
       totalVisitas: acc.totalVisitas + ativ.visitasRealizadas,
@@ -5150,25 +5151,10 @@ export async function getRankingMensal() {
       totalContratos: acc.totalContratos + ativ.contratosFechados,
       totalVgv: acc.totalVgv + ativ.vgvDia,
       totalPontos: acc.totalPontos + ativ.pontuacaoTotal,
-    }), {
-      totalLigacoes: 0,
-      totalAgendamentos: 0,
-      totalVisitas: 0,
-      totalDocumentacoes: 0,
-      totalContratos: 0,
-      totalVgv: 0,
-      totalPontos: 0,
-    });
-    
-    return {
-      corretorId: corretor.corretorId,
-      corretorNome: corretor.corretorNome,
-      corretorFoto: corretor.corretorFoto,
-      ...totais,
-    };
-  }));
-  
-  // Ordenar por pontuação (maior para menor)
+    }), { totalLigacoes: 0, totalAgendamentos: 0, totalVisitas: 0, totalDocumentacoes: 0, totalContratos: 0, totalVgv: 0, totalPontos: 0 });
+    return { corretorId: corretor.corretorId, corretorNome: corretor.corretorNome, corretorFoto: corretor.corretorFoto, ...totais };
+  });
+
   return ranking.sort((a, b) => b.totalPontos - a.totalPontos);
 }
 
