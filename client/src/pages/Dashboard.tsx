@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import DashboardLayout from "@/components/DashboardLayout";
+import { BottleneckPanel } from "@/features/dashboard/sections/BottleneckPanel";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
 import {
@@ -1206,6 +1207,11 @@ export default function Dashboard() {
                 <LeadsUrgentesCard leads={allLeads} />
               </div>
             )}
+
+            {/* Radar de Gargalos */}
+            <div className="mb-8">
+              <BottleneckPanel />
+            </div>
 
             {/* Card de Leads Parados */}
             {leadsParados && leadsParados.total > 0 && (

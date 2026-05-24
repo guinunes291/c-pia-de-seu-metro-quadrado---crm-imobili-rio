@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -6,90 +7,98 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { CompareProvider } from "./contexts/CompareContext";
 import { CopilotProvider } from "./contexts/CopilotContext";
-import Home from "./pages/Home";
-import Dashboard from "./pages/Dashboard";
-import Projetos from "./pages/Projetos";
-import Leads from "./pages/Leads";
-
-import Relatorios from "./pages/Relatorios";
-import Configuracoes from "./pages/Configuracoes";
-import ImportarSheets from "./pages/ImportarSheets";
-import ProjetoDetalhes from "@/pages/ProjetoDetalhes";
-import ImportarProjetos from "@/pages/ImportarProjetos";
-import Corretores from "@/pages/Corretores";
-import MinhaPerformance from "@/pages/MinhaPerformance";
-import MeuPainel from "@/pages/MeuPainel";
-import ImportarCSV from "@/pages/ImportarCSV";
-import ControleDistribuicao from "@/pages/ControleDistribuicao";
-import Comissoes from "@/pages/Comissoes";
-import TemplatesComissao from "@/pages/TemplatesComissao";
-import Notificacoes from "@/pages/Notificacoes";
-import LeadsPorCorretor from "@/pages/LeadsPorCorretor";
-import Kanban from "@/pages/Kanban";
-import Metas from "@/pages/Metas";
-import Roleta from "@/pages/Roleta";
-import HistoricoDistribuicao from "@/pages/HistoricoDistribuicao";
-import BoasVindas from "@/pages/BoasVindas";
-import TarefasDoDia from "@/pages/TarefasDoDia";
-import RankingTV from "@/pages/RankingTV";
-import PerformanceTV from "@/pages/PerformanceTV";
-import Lixeira from "@/pages/Lixeira";
-import MetasDiarias from "@/pages/MetasDiarias";
-import MeuPerfil from "@/pages/MeuPerfil";
-import HistoricoPresenca from "@/pages/HistoricoPresenca";
-import Agendamentos from "@/pages/Agendamentos";
-import AprovarProjetos from "@/pages/AprovarProjetos";
-import Conquistas from "@/pages/Conquistas";
-import GoogleSheetsSync from "@/pages/GoogleSheetsSync";
-import SincronizacaoBI from "@/pages/SincronizacaoBI";
-import MinhaAgenda from "@/pages/MinhaAgenda";
-import Propostas from "@/pages/Propostas";
-import AgendamentoPublico from "@/pages/AgendamentoPublico";
-import ChatbotPublico from "@/pages/ChatbotPublico";
-import PropostaPublica from "@/pages/PropostaPublica";
-import CalendarioGestor from "@/pages/CalendarioGestor";
-import ConfiguracaoWebhooks from "@/pages/ConfiguracaoWebhooks";
-import ControleLimites from "@/pages/ControleLimites";
-import ProjetoFoco from "@/pages/ProjetoFoco";
-
-import MonitoramentoFollowUps from "@/pages/MonitoramentoFollowUps";
-import ModoBlitz from "@/pages/ModoBlitz";
-import LogTransferencias from "@/pages/LogTransferencias";
-import GestaoEquipes from "@/pages/GestaoEquipes";
-import MinhaEquipe from "@/pages/MinhaEquipe";
-import LimpezaDuplicatas from "@/pages/LimpezaDuplicatas";
-import AtualizarProjetosEmMassa from "@/pages/AtualizarProjetosEmMassa";
-import LimparProjetosOrfaos from "@/pages/LimparProjetosOrfaos";
-import RelatorioEscolhasDiarias from "@/pages/RelatorioEscolhasDiarias";
-import CarteiraAtiva from "@/pages/CarteiraAtiva";
-import ScriptsVendas from "@/pages/ScriptsVendas";
-import CentralAlertas from "@/pages/CentralAlertas";
-import BuscadorProjetos from "@/pages/BuscadorProjetos";
-import GerenciarTabeloes from "@/pages/GerenciarTabeloes";
-import GerenciarFAQ from "@/pages/GerenciarFAQ";
-import MeuDashboard from "@/pages/meu-negocio/MeuDashboard";
-import MeuFollowUp from "@/pages/meu-negocio/MeuFollowUp";
-import PreAnaliseMcmv from "@/pages/meu-negocio/PreAnaliseMcmv";
-import MinhaEvolucao from "@/pages/meu-negocio/MinhaEvolucao";
-import ComoAvaliarMeuNegocio from "@/pages/meu-negocio/ComoAvaliarMeuNegocio";
-import ModeFoco from "@/pages/meu-negocio/ModeFoco";
-import RelatorioDiarioCorretor from "@/pages/meu-negocio/RelatorioDiarioCorretor";
-import OfertaAtiva from "@/pages/OfertaAtiva";
-import NovaOfertaAtiva from "@/pages/NovaOfertaAtiva";
-import KanbanOfertaAtiva from "@/pages/KanbanOfertaAtiva";
-import SessoesOferta from "@/pages/SessoesOferta";
-import DetalhesSessaoOferta from "@/pages/DetalhesSessaoOferta";
-import LinksUteis from "@/pages/LinksUteis";
-import GerenciarLinksUteis from "@/pages/GerenciarLinksUteis";
-import DashboardPage from "@/features/dashboard/DashboardPage";
-import PerformancePage from "@/features/performance/PerformancePage";
 import { AlertasNotification } from "./components/AlertasNotification";
 import { CorretorNotifications } from "./components/CorretorNotifications";
+
+// Páginas críticas — carregamento imediato (core do fluxo de vendas)
+import Home from "./pages/Home";
+import Dashboard from "./pages/Dashboard";
+import DashboardPage from "@/features/dashboard/DashboardPage";
+import PerformancePage from "@/features/performance/PerformancePage";
+import Leads from "./pages/Leads";
+import Kanban from "@/pages/Kanban";
+import CarteiraAtiva from "@/pages/CarteiraAtiva";
+import TarefasDoDia from "@/pages/TarefasDoDia";
+import ModoBlitz from "@/pages/ModoBlitz";
+import Agendamentos from "@/pages/Agendamentos";
+import MinhaAgenda from "@/pages/MinhaAgenda";
+import MeuPainel from "@/pages/MeuPainel";
+import MeuFollowUp from "@/pages/meu-negocio/MeuFollowUp";
+
+// Páginas secundárias — lazy loading (não acessadas na maioria das sessões)
+const Projetos = lazy(() => import("./pages/Projetos"));
+const Relatorios = lazy(() => import("./pages/Relatorios"));
+const Configuracoes = lazy(() => import("./pages/Configuracoes"));
+const ImportarSheets = lazy(() => import("./pages/ImportarSheets"));
+const ProjetoDetalhes = lazy(() => import("@/pages/ProjetoDetalhes"));
+const ImportarProjetos = lazy(() => import("@/pages/ImportarProjetos"));
+const Corretores = lazy(() => import("@/pages/Corretores"));
+const MeuPerfil = lazy(() => import("@/pages/MeuPerfil"));
+const ImportarCSV = lazy(() => import("@/pages/ImportarCSV"));
+const ControleDistribuicao = lazy(() => import("@/pages/ControleDistribuicao"));
+const Comissoes = lazy(() => import("@/pages/Comissoes"));
+const TemplatesComissao = lazy(() => import("@/pages/TemplatesComissao"));
+const Notificacoes = lazy(() => import("@/pages/Notificacoes"));
+const LeadsPorCorretor = lazy(() => import("@/pages/LeadsPorCorretor"));
+const Metas = lazy(() => import("@/pages/Metas"));
+const MetasDiarias = lazy(() => import("@/pages/MetasDiarias"));
+const Roleta = lazy(() => import("@/pages/Roleta"));
+const HistoricoDistribuicao = lazy(() => import("@/pages/HistoricoDistribuicao"));
+const BoasVindas = lazy(() => import("@/pages/BoasVindas"));
+const RankingTV = lazy(() => import("@/pages/RankingTV"));
+const PerformanceTV = lazy(() => import("@/pages/PerformanceTV"));
+const Lixeira = lazy(() => import("@/pages/Lixeira"));
+const HistoricoPresenca = lazy(() => import("@/pages/HistoricoPresenca"));
+const AprovarProjetos = lazy(() => import("@/pages/AprovarProjetos"));
+const Conquistas = lazy(() => import("@/pages/Conquistas"));
+const GoogleSheetsSync = lazy(() => import("@/pages/GoogleSheetsSync"));
+const SincronizacaoBI = lazy(() => import("@/pages/SincronizacaoBI"));
+const Propostas = lazy(() => import("@/pages/Propostas"));
+const AgendamentoPublico = lazy(() => import("@/pages/AgendamentoPublico"));
+const ChatbotPublico = lazy(() => import("@/pages/ChatbotPublico"));
+const PropostaPublica = lazy(() => import("@/pages/PropostaPublica"));
+const CalendarioGestor = lazy(() => import("@/pages/CalendarioGestor"));
+const ConfiguracaoWebhooks = lazy(() => import("@/pages/ConfiguracaoWebhooks"));
+const ControleLimites = lazy(() => import("@/pages/ControleLimites"));
+const ProjetoFoco = lazy(() => import("@/pages/ProjetoFoco"));
+const MonitoramentoFollowUps = lazy(() => import("@/pages/MonitoramentoFollowUps"));
+const LogTransferencias = lazy(() => import("@/pages/LogTransferencias"));
+const GestaoEquipes = lazy(() => import("@/pages/GestaoEquipes"));
+const MinhaEquipe = lazy(() => import("@/pages/MinhaEquipe"));
+const LimpezaDuplicatas = lazy(() => import("@/pages/LimpezaDuplicatas"));
+const AtualizarProjetosEmMassa = lazy(() => import("@/pages/AtualizarProjetosEmMassa"));
+const LimparProjetosOrfaos = lazy(() => import("@/pages/LimparProjetosOrfaos"));
+const RelatorioEscolhasDiarias = lazy(() => import("@/pages/RelatorioEscolhasDiarias"));
+const ScriptsVendas = lazy(() => import("@/pages/ScriptsVendas"));
+const CentralAlertas = lazy(() => import("@/pages/CentralAlertas"));
+const BuscadorProjetos = lazy(() => import("@/pages/BuscadorProjetos"));
+const GerenciarTabeloes = lazy(() => import("@/pages/GerenciarTabeloes"));
+const GerenciarFAQ = lazy(() => import("@/pages/GerenciarFAQ"));
+const MeuDashboard = lazy(() => import("@/pages/meu-negocio/MeuDashboard"));
+const PreAnaliseMcmv = lazy(() => import("@/pages/meu-negocio/PreAnaliseMcmv"));
+const ComoAvaliarMeuNegocio = lazy(() => import("@/pages/meu-negocio/ComoAvaliarMeuNegocio"));
+const ModeFoco = lazy(() => import("@/pages/meu-negocio/ModeFoco"));
+const OfertaAtiva = lazy(() => import("@/pages/OfertaAtiva"));
+const NovaOfertaAtiva = lazy(() => import("@/pages/NovaOfertaAtiva"));
+const KanbanOfertaAtiva = lazy(() => import("@/pages/KanbanOfertaAtiva"));
+const SessoesOferta = lazy(() => import("@/pages/SessoesOferta"));
+const DetalhesSessaoOferta = lazy(() => import("@/pages/DetalhesSessaoOferta"));
+const LinksUteis = lazy(() => import("@/pages/LinksUteis"));
+const GerenciarLinksUteis = lazy(() => import("@/pages/GerenciarLinksUteis"));
+
+function PageLoader() {
+  return (
+    <div className="flex h-[60vh] items-center justify-center">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+    </div>
+  );
+}
 
 
 
 function Router() {
   return (
+    <Suspense fallback={<PageLoader />}>
     <Switch>
       <Route path={"/"} component={Home} />
       <Route path={"/dashboard"} component={DashboardPage} />
@@ -177,6 +186,7 @@ function Router() {
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
+    </Suspense>
   );
 }
 
