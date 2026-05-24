@@ -163,6 +163,7 @@ export default function Leads() {
   // Custom date range (não persistido em URL — edge case)
   const [customDateStart, setCustomDateStart] = useState<Date | undefined>();
   const [customDateEnd, setCustomDateEnd] = useState<Date | undefined>();
+  const setDateRangePreset = (v: DateRangePreset) => setFilters({ datePreset: v === "all" ? "" : v, page: 1 });
 
   // Calcular datas baseado no preset
   const { dataInicio: dataInicioFilter, dataFim: dataFimFilter } = getDateRangeFromPreset(
