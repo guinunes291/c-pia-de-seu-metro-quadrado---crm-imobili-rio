@@ -204,7 +204,7 @@ function LeadCard({
             size="sm"
             variant="outline"
             className="h-8 px-2"
-            onClick={() => navigate(`/leads?id=${lead.id}`)}
+            onClick={() => navigate(`/leads?leadId=${lead.id}`)}
           >
             <ExternalLink className="h-3.5 w-3.5" />
           </Button>
@@ -293,7 +293,7 @@ function AgendamentoCard({
             size="sm"
             variant="outline"
             className="h-8 px-2"
-            onClick={() => navigate(`/leads?id=${ag.leadId}`)}
+            onClick={() => navigate(`/leads?leadId=${ag.leadId}`)}
           >
             <ExternalLink className="h-3.5 w-3.5" />
           </Button>

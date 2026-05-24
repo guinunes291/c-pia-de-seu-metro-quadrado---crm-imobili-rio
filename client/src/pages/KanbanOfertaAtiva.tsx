@@ -259,7 +259,7 @@ export default function KanbanOfertaAtiva() {
                         WhatsApp
                       </a>
                       <a
-                        href={`/leads?id=${selectedItem.leadId}`}
+                        href={`/leads?leadId=${selectedItem.leadId}`}
                         target="_blank"
                         rel="noreferrer"
                         className="flex items-center justify-center gap-2 px-3 py-2 bg-muted rounded-lg text-sm hover:bg-muted/80 transition-colors"

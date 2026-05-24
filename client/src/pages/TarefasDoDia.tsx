@@ -606,7 +606,7 @@ export default function TarefasDoDia() {
                       <Button 
                         size="sm" 
                         variant="outline"
-                        onClick={() => window.open(`/leads?id=${lead.id}`, '_self')}
+                        onClick={() => window.open(`/leads?leadId=${lead.id}`, '_self')}
                       >
                         Ver Lead
                       </Button>
