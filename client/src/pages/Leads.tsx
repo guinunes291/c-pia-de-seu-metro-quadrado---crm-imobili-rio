@@ -835,7 +835,7 @@ export default function Leads() {
               ].map(pill => (
                 <button
                   key={pill.value}
-                  onClick={() => { setStatusFilter(pill.value); setCurrentPage(1); }}
+                  onClick={() => setStatusFilter(pill.value)}
                   className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
                     statusFilter === pill.value
                       ? 'bg-primary text-primary-foreground border-primary'
@@ -883,7 +883,7 @@ export default function Leads() {
                 )}
                 <div className="space-y-1">
                   <Label className="text-xs">Temperatura</Label>
-                  <Select value={temperaturaFilter} onValueChange={(v) => { setTemperaturaFilter(v); setCurrentPage(1); }}>
+                  <Select value={temperaturaFilter} onValueChange={setTemperaturaFilter}>
                     <SelectTrigger className="h-8 text-xs">
                       <SelectValue placeholder="Todas" />
                     </SelectTrigger>
@@ -928,7 +928,7 @@ export default function Leads() {
             return (
               <button
                 key={status}
-                onClick={() => { setStatusFilter(isActive ? 'all' : status); setCurrentPage(1); }}
+                onClick={() => setStatusFilter(isActive ? 'all' : status)}
                 className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all ${
                   isActive ? `${bg} ${color} ring-2 ring-offset-1 ring-current` : 'bg-card border-border hover:border-primary/30 hover:bg-muted/50'
                 }`}
