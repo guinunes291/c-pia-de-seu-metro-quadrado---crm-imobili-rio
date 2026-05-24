@@ -4739,6 +4739,7 @@ export async function getFollowUpsDoDiaExpandido(
       leadProjectId: leads.projectId,
       leadOrigem: leads.origem,
       leadCriadoEm: leads.createdAt,
+      leadUpdatedAt: leads.updatedAt,
     })
       .from(followUps)
       .leftJoin(leads, eq(followUps.leadId, leads.id))
@@ -11871,6 +11872,7 @@ export async function getLeadsParaBlitz(
       proximoFollowup: leads.proximoFollowup,
       timerAtivo: leads.timerAtivo,
       createdAt: leads.createdAt,
+      updatedAt: leads.updatedAt,
       campanha: leads.campanha,
     })
     .from(leads)

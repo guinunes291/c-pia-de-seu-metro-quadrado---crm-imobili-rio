@@ -42,6 +42,8 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Link } from "wouter";
+import { SLAProgressBar, LeadTemperatureBadge } from "@/components/common";
+import { calcLeadTemperature } from "@shared/leadStatus";
 
 type BlocoAtivo = "follow_up" | "ligacoes" | "historico";
 
@@ -522,6 +524,11 @@ function BlocoFocoLigacoes() {
               </div>
             </div>
             <div className="text-right space-y-1 flex-shrink-0">
+              {lead.updatedAt && (() => {
+                const hoursInStatus = (Date.now() - new Date(lead.updatedAt).getTime()) / 3_600_000;
+                const temp = calcLeadTemperature(lead.status, hoursInStatus, false);
+                return <LeadTemperatureBadge temperature={temp} showLabel />;
+              })()}
               {lead.timerAtivo && (
                 <Badge variant="destructive" className="text-xs">
                   <Clock className="h-3 w-3 mr-1" />
@@ -540,6 +547,11 @@ function BlocoFocoLigacoes() {
               )}
             </div>
           </div>
+
+          {lead.updatedAt && (() => {
+            const hoursInStatus = (Date.now() - new Date(lead.updatedAt).getTime()) / 3_600_000;
+            return <SLAProgressBar status={lead.status} hoursInStatus={hoursInStatus} showLabel className="mt-3" />;
+          })()}
 
           <div className="flex flex-wrap gap-3 mt-4">
             {(lead.projetoNome || lead.projetoCustom) && (
