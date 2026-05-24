@@ -1,4 +1,4 @@
-import { eq, and, desc, asc, sql, gte, lte, lt, inArray, notInArray, gt, or, isNull, isNotNull, ne, like } from "drizzle-orm";
+import { eq, and, desc, asc, sql, gte, lte, lt, inArray, notInArray, gt, or, isNull, isNotNull, ne, like, aliasedTable } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { 
@@ -5385,6 +5385,8 @@ export async function getLeadsNaLixeira(page: number = 1, limit: number = 50) {
   
   const offset = (page - 1) * limit;
   
+  const corretorAlias = aliasedTable(users, "corretor_anterior");
+
   const [leadsResult, countResult] = await Promise.all([
     db.select({
       id: leads.id,
@@ -5396,49 +5398,25 @@ export async function getLeadsNaLixeira(page: number = 1, limit: number = 50) {
       motivoPerdido: leads.motivoPerdido,
       dataMovidoLixeira: leads.dataMovidoLixeira,
       corretorAnteriorId: leads.corretorAnteriorId,
+      corretorAnteriorNome: corretorAlias.name,
       projectId: leads.projectId,
+      projectNome: projects.nome,
       createdAt: leads.createdAt,
     })
       .from(leads)
+      .leftJoin(corretorAlias, eq(leads.corretorAnteriorId, corretorAlias.id))
+      .leftJoin(projects, eq(leads.projectId, projects.id))
       .where(eq(leads.naLixeira, true))
       .orderBy(desc(leads.dataMovidoLixeira))
       .limit(limit)
       .offset(offset),
     db.select({ count: sql<number>`count(*)` })
       .from(leads)
-      .where(eq(leads.naLixeira, true))
+      .where(eq(leads.naLixeira, true)),
   ]);
-  
-  // Buscar nomes dos corretores anteriores e projetos
-  const leadsComInfo = await Promise.all(leadsResult.map(async (lead) => {
-    let corretorAnteriorNome = null;
-    let projectNome = null;
-    
-    if (lead.corretorAnteriorId) {
-      const corretor = await db.select({ name: users.name })
-        .from(users)
-        .where(eq(users.id, lead.corretorAnteriorId))
-        .limit(1);
-      corretorAnteriorNome = corretor[0]?.name || null;
-    }
-    
-    if (lead.projectId) {
-      const project = await db.select({ nome: projects.nome })
-        .from(projects)
-        .where(eq(projects.id, lead.projectId))
-        .limit(1);
-      projectNome = project[0]?.nome || null;
-    }
-    
-    return {
-      ...lead,
-      corretorAnteriorNome,
-      projectNome,
-    };
-  }));
-  
+
   return {
-    leads: leadsComInfo,
+    leads: leadsResult,
     total: Number(countResult[0]?.count || 0),
     page,
     limit,
@@ -5495,7 +5473,7 @@ export async function getLeadsParaExportar(filters?: ExportFilters) {
     conditions.push(eq(leads.naLixeira, filters.naLixeira));
   }
   
-  const result = await db.select({
+  const leadsComInfo = await db.select({
     id: leads.id,
     nome: leads.nome,
     email: leads.email,
@@ -5514,40 +5492,16 @@ export async function getLeadsParaExportar(filters?: ExportFilters) {
     naLixeira: leads.naLixeira,
     dataMovidoLixeira: leads.dataMovidoLixeira,
     corretorId: leads.corretorId,
+    corretorNome: users.name,
     projectId: leads.projectId,
+    projectNome: projects.nome,
   })
     .from(leads)
+    .leftJoin(users, eq(leads.corretorId, users.id))
+    .leftJoin(projects, eq(leads.projectId, projects.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(leads.createdAt));
-  
-  // Buscar nomes de corretores e projetos
-  const leadsComInfo = await Promise.all(result.map(async (lead) => {
-    let corretorNome = null;
-    let projectNome = null;
-    
-    if (lead.corretorId) {
-      const corretor = await db.select({ name: users.name })
-        .from(users)
-        .where(eq(users.id, lead.corretorId))
-        .limit(1);
-      corretorNome = corretor[0]?.name || null;
-    }
-    
-    if (lead.projectId) {
-      const project = await db.select({ nome: projects.nome })
-        .from(projects)
-        .where(eq(projects.id, lead.projectId))
-        .limit(1);
-      projectNome = project[0]?.nome || null;
-    }
-    
-    return {
-      ...lead,
-      corretorNome,
-      projectNome,
-    };
-  }));
-  
+
   return leadsComInfo;
 }
 
