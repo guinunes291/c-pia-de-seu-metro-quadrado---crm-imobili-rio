@@ -284,6 +284,7 @@ export const meuNegocioRouter = router({
         tentativas: leads.diasFollowupConsecutivos,
         ultimoContato: leads.ultimoContato,
         createdAt: leads.createdAt,
+        updatedAt: leads.updatedAt,
       })
       .from(leads)
       .where(and(
