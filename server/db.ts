@@ -4037,7 +4037,9 @@ export async function getHistoricoDistribuicao(filtros?: {
   
   const total = Number(countResult[0]?.count || 0);
   
-  // Buscar items com joins
+  // Two aliases: one for corretor, one for distribuidor (avoids N+1 for distribuidor names)
+  const distribuidorAlias = aliasedTable(users, "distribuidor");
+
   const items = await db.select({
     id: distributionLog.id,
     leadId: distributionLog.leadId,
@@ -4048,33 +4050,19 @@ export async function getHistoricoDistribuicao(filtros?: {
     tipo: distributionLog.tipo,
     motivo: distributionLog.motivo,
     distribuidoPorId: distributionLog.distribuidoPorId,
+    distribuidoPorNome: distribuidorAlias.name,
     createdAt: distributionLog.createdAt,
   })
     .from(distributionLog)
     .leftJoin(leads, eq(distributionLog.leadId, leads.id))
     .leftJoin(users, eq(distributionLog.corretorId, users.id))
+    .leftJoin(distribuidorAlias, eq(distributionLog.distribuidoPorId, distribuidorAlias.id))
     .where(whereClause)
     .orderBy(desc(distributionLog.createdAt))
     .limit(filtros?.limit || 50)
     .offset(filtros?.offset || 0);
-  
-  // Buscar nomes dos distribuidores (se manual)
-  const itemsWithDistribuidor = await Promise.all(items.map(async (item) => {
-    let distribuidoPorNome: string | null = null;
-    if (item.distribuidoPorId) {
-      const distribuidor = await db.select({ name: users.name })
-        .from(users)
-        .where(eq(users.id, item.distribuidoPorId))
-        .limit(1);
-      distribuidoPorNome = distribuidor[0]?.name || null;
-    }
-    return {
-      ...item,
-      distribuidoPorNome,
-    } as HistoricoDistribuicaoItem;
-  }));
-  
-  return { items: itemsWithDistribuidor, total };
+
+  return { items: items as unknown as HistoricoDistribuicaoItem[], total };
 }
 
 // Contar distribuições por período
