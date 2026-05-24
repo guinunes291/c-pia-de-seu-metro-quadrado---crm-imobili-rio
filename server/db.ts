@@ -3175,12 +3175,29 @@ export async function getRankingCorretores(mes?: number | null, ano?: number | n
       .groupBy(leads.corretorId, users.name, users.fotoUrl)
       .orderBy(sql`vgvTotal DESC`);
     
+    // Buscar metaVGV individual para o período (secondary query, não quebra o SELECT principal)
+    const mesRef = mes ?? (dataInicio ? dataInicio.getMonth() + 1 : null);
+    const anoRef = ano ?? (dataInicio ? dataInicio.getFullYear() : null);
+    const metaVGVMap = new Map<number, number>();
+    if (mesRef && anoRef && result.length > 0) {
+      const corretorIds = result.map(r => Number(r.corretorId)).filter(Boolean);
+      const metasRows = await db.select({ corretorId: metas.corretorId, metaVGV: metas.metaVGV })
+        .from(metas)
+        .where(and(
+          inArray(metas.corretorId, corretorIds),
+          eq(metas.mes, mesRef),
+          eq(metas.ano, anoRef),
+        ));
+      for (const m of metasRows) metaVGVMap.set(m.corretorId, Number(m.metaVGV || 0));
+    }
+
     return result.map((row, index) => ({
       corretorId: Number(row.corretorId),
       corretorNome: row.corretorNome || 'Sem nome',
       corretorFoto: row.corretorFoto || null,
       vgvTotal: Number(row.vgvTotal || 0),
       contratosFechados: Number(row.contratosFechados || 0),
+      metaVGV: metaVGVMap.get(Number(row.corretorId)) || 0,
       posicao: index + 1,
     }));
   } catch (error) {
@@ -10039,7 +10056,7 @@ export async function getDashboardPerformance(mes: number, ano: number, equipeId
   if (idsAtivos.length === 0) {
     return {
       metaGlobal,
-      resumo: { totalVGV: 0, totalContratos: 0, totalLeads: 0, totalAgendamentos: 0, totalVisitas: 0, metaVGV: 0, percentualAtingimento: 0, gapMeta: 0, totalCorretores: 0 },
+      resumo: { totalVGV: 0, totalContratos: 0, totalLeads: 0, totalAgendamentos: 0, totalVisitas: 0, totalDistratos: 0, vgvDistratos: 0, vgvLiquido: 0, metaVGV: 0, percentualAtingimento: 0, gapMeta: 0, totalCorretores: 0 },
       corretores: [],
     };
   }
@@ -10078,16 +10095,42 @@ export async function getDashboardPerformance(mes: number, ano: number, equipeId
     ))
     .groupBy(leads.corretorId, leads.status);
 
-  const leadsMap = new Map<number, { total: number; agendamentos: number; visitas: number }>();
+  const leadsMap = new Map<number, { total: number; visitas: number }>();
   for (const row of leadsPorCorretorStatus) {
     const cid = row.corretorId!;
-    if (!leadsMap.has(cid)) leadsMap.set(cid, { total: 0, agendamentos: 0, visitas: 0 });
+    if (!leadsMap.has(cid)) leadsMap.set(cid, { total: 0, visitas: 0 });
     const entry = leadsMap.get(cid)!;
     const cnt = Number(row.count);
     entry.total += cnt;
-    if (row.status === 'agendado') entry.agendamentos = cnt;
     if (row.status === 'visita_realizada') entry.visitas = cnt;
   }
+
+  // Agendamentos reais (tabela agendamentos, não status do lead) — corrige funil distorcido
+  const agendamentosReaisRows = await db.select({
+    total: sql<number>`COUNT(DISTINCT ${agendamentos.leadId})`,
+  })
+    .from(agendamentos)
+    .where(and(
+      inArray(agendamentos.corretorId, idsAtivos),
+      gte(agendamentos.createdAt, dataInicio),
+      lte(agendamentos.createdAt, dataFim)
+    ));
+  const totalAgendamentosReais = Number(agendamentosReaisRows[0]?.total || 0);
+
+  // Distratos do período — para VGV Líquido
+  const distatosRows = await db.select({
+    total: sql<number>`COUNT(*)`,
+    vgv: sql<number>`COALESCE(SUM(${contratos.valorVenda}), 0)`,
+  })
+    .from(contratos)
+    .where(and(
+      inArray(contratos.corretorId, idsAtivos),
+      sql`${contratos.distrato} = 1`,
+      gte(contratos.dataDistrato, dataInicio),
+      lte(contratos.dataDistrato, dataFim)
+    ));
+  const totalDistratos = Number(distatosRows[0]?.total || 0);
+  const vgvDistratos = Number(distatosRows[0]?.vgv || 0);
 
   // Metas individuais — 1 query
   const metasRows = await db.select()
@@ -10105,19 +10148,17 @@ export async function getDashboardPerformance(mes: number, ano: number, equipeId
   let totalVGV = 0;
   let totalContratos = 0;
   let totalLeads = 0;
-  let totalAgendamentos = 0;
   let totalVisitas = 0;
 
   for (const corretor of corretoresResult) {
     if (corretor.situacao === 'inativo') continue;
     const vgvInfo = vgvMap.get(corretor.id) ?? { vgv: 0, contratos: 0 };
-    const leadsInfo = leadsMap.get(corretor.id) ?? { total: 0, agendamentos: 0, visitas: 0 };
+    const leadsInfo = leadsMap.get(corretor.id) ?? { total: 0, visitas: 0 };
     const meta = metasMap.get(corretor.id);
 
     totalVGV += vgvInfo.vgv;
     totalContratos += vgvInfo.contratos;
     totalLeads += leadsInfo.total;
-    totalAgendamentos += leadsInfo.agendamentos;
     totalVisitas += leadsInfo.visitas;
 
     corretoresData.push({
@@ -10128,7 +10169,6 @@ export async function getDashboardPerformance(mes: number, ano: number, equipeId
       vgv: vgvInfo.vgv,
       contratos: vgvInfo.contratos,
       leads: leadsInfo.total,
-      agendamentos: leadsInfo.agendamentos,
       visitas: leadsInfo.visitas,
       metaVGV: meta?.metaVGV || 0,
       metaContratos: meta?.metaContratos || 0,
@@ -10153,8 +10193,11 @@ export async function getDashboardPerformance(mes: number, ano: number, equipeId
       totalVGV,
       totalContratos,
       totalLeads,
-      totalAgendamentos,
+      totalAgendamentos: totalAgendamentosReais,
       totalVisitas,
+      totalDistratos,
+      vgvDistratos,
+      vgvLiquido: totalVGV - vgvDistratos,
       metaVGV: metaVGVGlobal,
       percentualAtingimento,
       gapMeta,
