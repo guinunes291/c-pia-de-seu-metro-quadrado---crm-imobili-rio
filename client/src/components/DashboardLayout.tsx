@@ -1133,7 +1133,7 @@ function DashboardContent({
           </div>
           {/* Banner de lead aguardando primeiro contato */}
           {isCorretor && primeiroLeadAguardando && (
-            <div className="sticky top-0 z-40 flex items-center justify-between gap-3 bg-red-600 px-4 py-2.5 text-white shadow-md">
+            <div className="sticky top-0 z-[5] flex items-center justify-between gap-3 bg-red-600 px-4 py-2.5 text-white shadow-md">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-lg">🔥</span>
                 <div className="min-w-0">
