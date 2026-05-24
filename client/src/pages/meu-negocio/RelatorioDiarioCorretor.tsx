@@ -526,9 +526,14 @@ export default function RelatorioDiarioCorretor() {
                     <span>
                       {d.checklist.filter((c) => c.ok).length} de {d.checklist.length} concluídos
                     </span>
-                    <span className={d.checklist.every((c) => c.ok) ? "text-emerald-400 font-semibold" : ""}>
-                      {d.checklist.every((c) => c.ok) ? "🎯 Meta batida!" : "Continue assim!"}
-                    </span>
+                    {(() => {
+                      const done = d.checklist.filter((c) => c.ok).length;
+                      const total = d.checklist.length;
+                      if (done === total) return <span className="text-emerald-400 font-semibold">🎯 Meta batida!</span>;
+                      if (done === 0) return <span className="text-muted-foreground">Vamos começar!</span>;
+                      if (done >= Math.ceil(total / 2)) return <span className="text-amber-500 font-medium">Mais da metade! Vai lá!</span>;
+                      return <span className="text-orange-400 font-medium">Bora acelerar!</span>;
+                    })()}
                   </div>
                 </CardContent>
               </Card>
