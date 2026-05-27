@@ -4,7 +4,6 @@ import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { Loader2, MapPin, Building2, Filter } from "lucide-react";
 import { MarkerClusterer, SuperClusterAlgorithm } from "@googlemaps/markerclusterer";
-import DashboardLayout from "@/components/DashboardLayout";
 
 interface ProjetosMapViewProps {
   filtroConstrutora?: string;
@@ -265,8 +264,6 @@ export default function ProjetosMapView({
   }
 
   return (
-    <DashboardLayout>
-
     <div className="space-y-3">
       {/* Stats bar */}
       <div className="flex items-center gap-4 px-4 py-2 bg-card rounded-lg border text-sm">
@@ -328,7 +325,5 @@ export default function ProjetosMapView({
         </div>
       </div>
     </div>
-  
-    </DashboardLayout>
-    );
+  );
 }

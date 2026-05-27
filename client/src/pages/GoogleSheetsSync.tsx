@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, CheckCircle2, XCircle, RefreshCw, ExternalLink, FileSpreadsheet, Zap, Settings } from "lucide-react";
 import { toast } from "sonner";
-import DashboardLayout from "@/components/DashboardLayout";
 
 export default function GoogleSheetsSync() {
   const [isSyncing, setIsSyncing] = useState(false);
@@ -62,8 +61,6 @@ export default function GoogleSheetsSync() {
   };
 
   return (
-    <DashboardLayout>
-
     <div className="container py-8 max-w-4xl">
       <div className="mb-8">
         <h1 className="text-3xl font-bold flex items-center gap-3">
@@ -256,7 +253,5 @@ export default function GoogleSheetsSync() {
         </AlertDescription>
       </Alert>
     </div>
-  
-    </DashboardLayout>
-    );
+  );
 }

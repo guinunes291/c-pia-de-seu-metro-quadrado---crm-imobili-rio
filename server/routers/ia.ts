@@ -492,7 +492,6 @@ export const iaRouter = router({
         .select({
           id: leadsTable.id,
           nome: leadsTable.nome,
-          telefone: leadsTable.telefone,
           status: leadsTable.status,
           temperatura: leadsTable.temperatura,
           faixaRenda: leadsTable.faixaRenda,
@@ -547,11 +546,7 @@ export const iaRouter = router({
       });
 
       const parsed = parseJsonFromLLM(extractTextContent(response)) as any;
-      const telefoneMap = Object.fromEntries(leadsDoCorretor.map((l) => [l.id, l.telefone ?? ""]));
-      const prioridades = (parsed.prioridades || []).slice(0, 5).map((p: any) => ({
-        ...p,
-        leadTelefone: telefoneMap[p.leadId] ?? "",
-      }));
+      const prioridades = (parsed.prioridades || []).slice(0, 5);
       const agora = new Date();
 
       // Salvar/atualizar na tabela notifications

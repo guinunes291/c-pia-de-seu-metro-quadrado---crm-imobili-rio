@@ -59,7 +59,7 @@ export default function NotificationListener() {
     { since: lastCheck },
     {
       enabled: !!user,
-      refetchInterval: 10 * 60 * 1000, // 10 minutos — SSE via useLeadEvents invalida unreadCount instantaneamente
+      refetchInterval: 5 * 60 * 1000, // 5 minutos (reduzido de 60s — notificações não precisam de polling agressivo)
       refetchIntervalInBackground: false,
       refetchOnWindowFocus: true,
     }

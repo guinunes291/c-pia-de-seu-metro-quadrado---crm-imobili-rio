@@ -1,7 +1,19 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { publicProcedure, router } from "../_core/trpc";
-import { adminProcedure } from "../_core/rbac";
+import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
+
+// ============================================================================
+// HELPERS E MIDDLEWARES
+// ============================================================================
+function isAdminLevel(role: string): boolean {
+  return role === 'admin' || role === 'superintendente';
+}
+const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (!isAdminLevel(ctx.user.role)) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas administradores podem acessar' });
+  }
+  return next({ ctx });
+});
 
 // ============================================================================
 // ROUTER DE CONSTRUTORAS

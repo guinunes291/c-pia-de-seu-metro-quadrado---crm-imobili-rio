@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { gerarLinkWhatsApp } from "@/lib/whatsapp";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -18,17 +18,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -70,7 +59,6 @@ import {
   X,
   MessageCircle,
   Filter,
-  UserCheck,
 } from "lucide-react";
 import CalendarioAgendamentos from "@/components/CalendarioAgendamentos";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -110,19 +98,13 @@ type Project = {
   construtora: string | null;
 };
 
-type Corretor = {
-  id: number;
-  nome: string;
-  name: string;
-};
-
 const STATUS_CONFIG = {
   pendente: { label: "Pendente", color: "bg-yellow-500", icon: AlertCircle },
   confirmado: { label: "Confirmado", color: "bg-blue-500", icon: CheckCircle },
   realizado: { label: "Realizado", color: "bg-green-500", icon: CheckCircle },
   cancelado: { label: "Cancelado", color: "bg-red-500", icon: XCircle },
   reagendado: { label: "Reagendado", color: "bg-orange-500", icon: AlertCircle },
-  nao_compareceu: { label: "Não Compareceu", color: "bg-gray-500", icon: XCircle },
+  nao_compareceu: { label: "Não Compareceu", color: "bg-gray-500", icon: XCircle }, // Fase 2
 };
 
 export default function AgendamentosPage() {
@@ -148,58 +130,24 @@ export default function AgendamentosPage() {
   const HOURS = Array.from({ length: 14 }, (_, i) => String(i + 7).padStart(2, "0")); // 07-20
   const MINUTES = ["00", "15", "30", "45"];
 
-  // Filtros
+  // Queries
   const [statusFiltro, setStatusFiltro] = useState<string>("todos");
-  const [corretorFiltro, setCorretorFiltro] = useState<string>("todos");
-  const [dataInicioFiltro, setDataInicioFiltro] = useState<string>("");
-  const [dataFimFiltro, setDataFimFiltro] = useState<string>("");
-
-  const isGestor = user?.role === 'gestor' || user?.role === 'admin' || user?.role === 'superintendente';
-
-  // Queries — gestor usa listAll (com filtros de equipe), corretor usa list
-  const { data: agendamentosGestor, isLoading: isLoadingGestor } = trpc.agendamentos.listAll.useQuery(
-    {
-      corretorId: corretorFiltro !== "todos" ? parseInt(corretorFiltro) : undefined,
-      dataInicio: dataInicioFiltro || undefined,
-      dataFim: dataFimFiltro || undefined,
-      status: statusFiltro !== "todos" ? statusFiltro : undefined,
-    },
-    { enabled: !!isGestor }
-  );
-  const { data: agendamentosCorretor, isLoading: isLoadingCorretor } = trpc.agendamentos.list.useQuery(
-    {
-      dataInicio: dataInicioFiltro || undefined,
-      dataFim: dataFimFiltro || undefined,
-      status: statusFiltro !== "todos" ? statusFiltro : undefined,
-    },
-    { enabled: !isGestor }
-  );
-
-  const agendamentos = isGestor ? agendamentosGestor : agendamentosCorretor;
-  const isLoading = isGestor ? isLoadingGestor : isLoadingCorretor;
-
+  const { data: agendamentos, isLoading } = trpc.agendamentos.list.useQuery();
   const { data: agendamentosHoje } = trpc.agendamentos.hoje.useQuery();
   // Busca leads somente quando o modal de criação está aberto
   const { data: leads } = trpc.leads.list.useQuery(undefined, { enabled: isModalOpen });
   const { data: projetos } = trpc.projects.list.useQuery();
-  const { data: corretoresLista } = trpc.corretores.list.useQuery(undefined, { enabled: isGestor });
 
   // Mutations
   const utils = trpc.useUtils();
-
-  const invalidateAll = () => {
-    utils.agendamentos.list.invalidate();
-    utils.agendamentos.listAll.invalidate();
-    utils.agendamentos.hoje.invalidate();
-  };
-
   const createAgendamento = trpc.agendamentos.create.useMutation({
     onSuccess: () => {
       toast.success("Agendamento criado com sucesso!");
       setIsSubmitting(false);
       setIsModalOpen(false);
       resetForm();
-      invalidateAll();
+      utils.agendamentos.list.invalidate();
+      utils.agendamentos.hoje.invalidate();
     },
     onError: (error) => {
       toast.error(error.message || "Erro ao criar agendamento");
@@ -210,7 +158,8 @@ export default function AgendamentosPage() {
   const updateStatus = trpc.agendamentos.updateStatus.useMutation({
     onSuccess: () => {
       toast.success("Status atualizado com sucesso!");
-      invalidateAll();
+      utils.agendamentos.list.invalidate();
+      utils.agendamentos.hoje.invalidate();
     },
     onError: (error) => {
       toast.error(error.message || "Erro ao atualizar status");
@@ -224,23 +173,19 @@ export default function AgendamentosPage() {
     lead.telefone.includes(searchTerm)
   );
 
-  // Agrupar agendamentos por data
-  const agendamentosFiltrados = useMemo(() => {
-    // Para gestor, os filtros de status/corretor já vêm do backend
-    // Para corretor, filtra localmente por status (já vem do backend também via input)
-    return (agendamentos || []);
-  }, [agendamentos]);
+  // Agrupar agendamentos por data (respeitando filtro de status)
+  const agendamentosFiltrados = (agendamentos || []).filter(
+    (ag: Agendamento) => statusFiltro === "todos" || ag.status === statusFiltro
+  );
+  const agendamentosPorData = agendamentosFiltrados.reduce((acc: Record<string, Agendamento[]>, ag: Agendamento) => {
+    // ag.dataAgendamento já vem como Date do backend, não precisa parseISO
+    const data = format(new Date(ag.dataAgendamento), "yyyy-MM-dd");
+    if (!acc[data]) acc[data] = [];
+    acc[data].push(ag);
+    return acc;
+  }, {});
 
-  const agendamentosPorData = useMemo(() => {
-    return agendamentosFiltrados.reduce((acc: Record<string, Agendamento[]>, ag: Agendamento) => {
-      const data = format(new Date(ag.dataAgendamento), "yyyy-MM-dd");
-      if (!acc[data]) acc[data] = [];
-      acc[data].push(ag);
-      return acc;
-    }, {});
-  }, [agendamentosFiltrados]);
-
-  const datasOrdenadas = useMemo(() => Object.keys(agendamentosPorData).sort(), [agendamentosPorData]);
+  const datasOrdenadas = Object.keys(agendamentosPorData).sort();
 
   const resetForm = () => {
     setSelectedLead(null);
@@ -480,31 +425,50 @@ export default function AgendamentosPage() {
                   )}
                 </div>
 
-                {/* Horário */}
+                {/* Hora */}
                 <div className="space-y-2">
                   <Label>Horário *</Label>
-                  <div className="flex gap-2">
-                    <Select value={selectedHour} onValueChange={setSelectedHour}>
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Hora" />
-                      </SelectTrigger>
-                      <SelectContent>
+                  <div className="flex gap-4 items-center">
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground mb-1 block">Hora</Label>
+                      <div className="grid grid-cols-7 gap-1">
                         {HOURS.map((h) => (
-                          <SelectItem key={h} value={h}>{h}h</SelectItem>
+                          <Button
+                            key={h}
+                            type="button"
+                            size="sm"
+                            variant={selectedHour === h ? "default" : "outline"}
+                            className="h-8 text-xs"
+                            onClick={() => setSelectedHour(h)}
+                          >
+                            {h}
+                          </Button>
                         ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={selectedMinute} onValueChange={setSelectedMinute}>
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Min" />
-                      </SelectTrigger>
-                      <SelectContent>
+                      </div>
+                    </div>
+                    <div className="w-24">
+                      <Label className="text-xs text-muted-foreground mb-1 block">Min</Label>
+                      <div className="grid grid-cols-2 gap-1">
                         {MINUTES.map((m) => (
-                          <SelectItem key={m} value={m}>{m}min</SelectItem>
+                          <Button
+                            key={m}
+                            type="button"
+                            size="sm"
+                            variant={selectedMinute === m ? "default" : "outline"}
+                            className="h-8 text-xs"
+                            onClick={() => setSelectedMinute(m)}
+                          >
+                            {m}
+                          </Button>
                         ))}
-                      </SelectContent>
-                    </Select>
+                      </div>
+                    </div>
                   </div>
+                  {selectedHour && selectedMinute && (
+                    <p className="text-sm text-center text-muted-foreground">
+                      Horário: {selectedHour}:{selectedMinute}
+                    </p>
+                  )}
                 </div>
 
                 {/* Observações */}
@@ -520,16 +484,16 @@ export default function AgendamentosPage() {
               </div>
 
               <DialogFooter>
-                <Button variant="outline" onClick={() => { setIsModalOpen(false); resetForm(); }}>
+                <Button variant="outline" onClick={() => setIsModalOpen(false)}>
                   Cancelar
                 </Button>
-                <Button
+                <Button 
                   onClick={handleSubmit}
                   disabled={isSubmitting || createAgendamento.isPending}
                 >
-                  {isSubmitting || createAgendamento.isPending ? (
+                  {(isSubmitting || createAgendamento.isPending) ? (
                     <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
                       Criando...
                     </>
                   ) : (
@@ -566,72 +530,6 @@ export default function AgendamentosPage() {
 
           {/* Visualização em Lista */}
           <TabsContent value="list" className="mt-4 space-y-6">
-            {/* Filtros avançados para gestor */}
-            {isGestor && (
-              <Card className="border-dashed">
-                <CardContent className="pt-4 pb-3">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Filter className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium text-muted-foreground">Filtros avançados</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {/* Filtro por corretor */}
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Corretor</Label>
-                      <Select value={corretorFiltro} onValueChange={setCorretorFiltro}>
-                        <SelectTrigger className="h-8 text-sm">
-                          <SelectValue placeholder="Todos os corretores" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="todos">Todos os corretores</SelectItem>
-                          {(corretoresLista || []).map((c: Corretor) => (
-                            <SelectItem key={c.id} value={c.id.toString()}>
-                              {c.nome || c.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {/* Filtro data início */}
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Data início</Label>
-                      <Input
-                        type="date"
-                        className="h-8 text-sm"
-                        value={dataInicioFiltro}
-                        onChange={(e) => setDataInicioFiltro(e.target.value)}
-                      />
-                    </div>
-                    {/* Filtro data fim */}
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Data fim</Label>
-                      <Input
-                        type="date"
-                        className="h-8 text-sm"
-                        value={dataFimFiltro}
-                        onChange={(e) => setDataFimFiltro(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  {(corretorFiltro !== "todos" || dataInicioFiltro || dataFimFiltro) && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="mt-2 h-7 text-xs text-muted-foreground"
-                      onClick={() => {
-                        setCorretorFiltro("todos");
-                        setDataInicioFiltro("");
-                        setDataFimFiltro("");
-                      }}
-                    >
-                      <X className="h-3 w-3 mr-1" />
-                      Limpar filtros
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
             {/* Filtro de Status */}
             <div className="flex items-center gap-2 flex-wrap">
               <Filter className="h-4 w-4 text-muted-foreground" />
@@ -723,22 +621,21 @@ export default function AgendamentosPage() {
 }
 
 // Componente de Card de Agendamento com Detalhes Expandíveis
-function AgendamentoCard({
-  agendamento,
-  onUpdateStatus
-}: {
+function AgendamentoCard({ 
+  agendamento, 
+  onUpdateStatus 
+}: { 
   agendamento: Agendamento;
-  onUpdateStatus: (status: 'pendente' | 'confirmado' | 'realizado' | 'cancelado' | 'reagendado' | 'nao_compareceu') => void;
+  onUpdateStatus: (status: 'pendente' | 'confirmado' | 'realizado' | 'cancelado' | 'reagendado' | 'nao_compareceu') => void; // Fase 2
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  // staleTime alto para aproveitar cache entre cards — reduz N+1 de queries por card
-  const { data: lead } = trpc.leads.getById.useQuery({ id: agendamento.leadId }, { staleTime: 5 * 60_000 });
-  const { data: corretor } = trpc.users.getById.useQuery({ id: agendamento.corretorId }, { staleTime: 10 * 60_000 });
+  const { data: lead } = trpc.leads.getById.useQuery({ id: agendamento.leadId });
+  const { data: corretor } = trpc.users.getById.useQuery({ id: agendamento.corretorId });
   const { data: projeto } = trpc.projects.getById.useQuery(
     { id: agendamento.projectId! },
-    { enabled: !!agendamento.projectId, staleTime: 10 * 60_000 }
+    { enabled: !!agendamento.projectId }
   );
-
+  
   const statusConfig = STATUS_CONFIG[agendamento.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pendente;
   const StatusIcon = statusConfig.icon;
 
@@ -756,15 +653,11 @@ function AgendamentoCard({
     }
   };
 
-  const isPendente = agendamento.status === 'pendente';
-  const isConfirmado = agendamento.status === 'confirmado';
-  const isAtivo = isPendente || isConfirmado;
-
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardContent className="p-4">
         {/* Header do Card - Sempre Visível */}
-        <div
+        <div 
           className="flex items-start justify-between gap-4 cursor-pointer"
           onClick={() => setIsExpanded(!isExpanded)}
         >
@@ -807,20 +700,8 @@ function AgendamentoCard({
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="text-muted-foreground">Telefone:</span>
-                <div className="flex items-center gap-2 mt-0.5">
-                  {lead?.telefone ? (
-                    <a
-                      href={`tel:${lead.telefone}`}
-                      className="font-medium hover:text-primary transition-colors flex items-center gap-1"
-                      onClick={(e) => e.stopPropagation()}
-                      title="Ligar"
-                    >
-                      <Phone className="h-3 w-3" />
-                      {lead.telefone}
-                    </a>
-                  ) : (
-                    <span className="font-medium">-</span>
-                  )}
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{lead?.telefone || "-"}</span>
                   {lead?.telefone && (
                     <button
                       className="text-green-600 hover:text-green-700 transition-colors"
@@ -837,15 +718,15 @@ function AgendamentoCard({
               </div>
               <div>
                 <span className="text-muted-foreground">Corretor:</span>
-                <div className="font-medium mt-0.5">{corretor?.name || "-"}</div>
+                <div className="font-medium">{corretor?.name || "-"}</div>
               </div>
               <div>
                 <span className="text-muted-foreground">Construtora:</span>
-                <div className="font-medium mt-0.5">{agendamento.construtora || "-"}</div>
+                <div className="font-medium">{agendamento.construtora || "-"}</div>
               </div>
               <div>
                 <span className="text-muted-foreground">Data:</span>
-                <div className="font-medium mt-0.5">
+                <div className="font-medium">
                   {formatDataAgendamento(agendamento.dataAgendamento)}
                 </div>
               </div>
@@ -860,25 +741,8 @@ function AgendamentoCard({
             )}
 
             {/* Botões de Ação - Apenas para Pendente/Confirmado */}
-            {isAtivo && (
+            {(agendamento.status === 'pendente' || agendamento.status === 'confirmado') && (
               <div className="flex flex-wrap gap-2 pt-2">
-                {/* Confirmar Presença — apenas para pendente */}
-                {isPendente && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex-1 border-blue-500 text-blue-600 hover:bg-blue-50"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onUpdateStatus('confirmado');
-                    }}
-                  >
-                    <UserCheck className="h-4 w-4 mr-1" />
-                    Confirmar Presença
-                  </Button>
-                )}
-
-                {/* Realizado */}
                 <Button
                   size="sm"
                   variant="default"
@@ -891,8 +755,7 @@ function AgendamentoCard({
                   <Check className="h-4 w-4 mr-1" />
                   Realizado
                 </Button>
-
-                {/* Não Compareceu */}
+                {/* Botão Não Compareceu — Fase 2 */}
                 <Button
                   size="sm"
                   variant="outline"
@@ -905,40 +768,18 @@ function AgendamentoCard({
                   <XCircle className="h-4 w-4 mr-1" />
                   Não Compareceu
                 </Button>
-
-                {/* Cancelar — com confirmação via AlertDialog */}
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="flex-1"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <X className="h-4 w-4 mr-1" />
-                      Cancelar
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Cancelar agendamento?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Tem certeza que deseja cancelar o agendamento de{" "}
-                        <strong>{lead?.nome || "este cliente"}</strong>?
-                        Esta ação não pode ser desfeita.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Voltar</AlertDialogCancel>
-                      <AlertDialogAction
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        onClick={() => onUpdateStatus('cancelado')}
-                      >
-                        Sim, cancelar
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUpdateStatus('cancelado');
+                  }}
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Cancelar
+                </Button>
               </div>
             )}
           </div>

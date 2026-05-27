@@ -68,6 +68,7 @@ export const users = mysqlTable("users", {
   
   // Sistema de Equipes
   equipeId: int("equipeId"), // ID da equipe (para corretores e gestores)
+
   // Permissões especiais
   acessaLinksUteis: boolean("acessaLinksUteis").default(false).notNull(),
   
@@ -216,9 +217,6 @@ export type InsertProjectSuggestion = typeof projectSuggestions.$inferInsert;
 // TABELA DE UNIDADES (IMÓVEIS ESPECÍFICOS)
 // ============================================================================
 
-// TABELA SEM USO ATIVO — mantida no schema para referência futura.
-// Destino planejado: catálogo de unidades individuais por projeto (tipologia, metragem, andar).
-// Não possui queries ativas em db.ts nem procedures em routers.ts.
 export const properties = mysqlTable("properties", {
   id: int("id").autoincrement().primaryKey(),
   projectId: int("projectId").notNull(),
@@ -403,9 +401,9 @@ export const leadHistory = mysqlTable("lead_history", {
     "email",
     "sms",
     "visita",
-    "outro",
-    "mudanca_status" // Registro automático de mudanças de status
+    "outro"
   ]).notNull(),
+  
   resultado: mysqlEnum("resultado", [
     "contato_realizado",
     "nao_atendeu",
@@ -631,9 +629,6 @@ export type InsertDistributionLog = typeof distributionLog.$inferInsert;
 // TABELA DE ESTATÍSTICAS DE CONVERSÃO (para otimização de distribuição)
 // ============================================================================
 
-// TABELA SEM USO ATIVO — mantida no schema para referência futura.
-// Destino planejado: cache de métricas de conversão pré-calculadas por corretor/projeto.
-// Substituída por queries em tempo real em relatorios.ts. Candidata a remoção futura.
 export const conversionStats = mysqlTable("conversion_stats", {
   id: int("id").autoincrement().primaryKey(),
   corretorId: int("corretorId").notNull(),

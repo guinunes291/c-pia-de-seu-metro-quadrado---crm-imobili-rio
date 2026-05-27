@@ -7,7 +7,9 @@ import { TRPCError } from '@trpc/server';
 import { sendPushNotification } from '../pushNotifications';
 import { sendLeadStatusChangedEvent } from '../metaConversions';
 
-import { corretorProcedure, gestorProcedure, adminProcedure, adminExportProcedure, isGestorLevel, isAdminLevel } from '../_core/rbac';
+// ============================================================================
+// HELPERS DE ROLE (replicados do routers.ts para independência)
+// ============================================================================
 
 // Timer é exclusivo para leads de Facebook ADS
 const _ORIGENS_ADS = ['webhook', 'facebook', 'fb', 'ads'];
@@ -15,6 +17,42 @@ function isLeadOrigemADS(origem: string | null | undefined): boolean {
   if (!origem) return false;
   return _ORIGENS_ADS.some(kw => origem.toLowerCase().includes(kw));
 }
+
+function isGestorLevel(role: string): boolean {
+  return role === 'gestor' || role === 'admin' || role === 'superintendente';
+}
+
+function isAdminLevel(role: string): boolean {
+  return role === 'admin' || role === 'superintendente';
+}
+
+const corretorProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== 'corretor' && !isGestorLevel(ctx.user.role)) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso negado' });
+  }
+  return next({ ctx });
+});
+
+const gestorProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (!isGestorLevel(ctx.user.role)) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas gestores podem acessar' });
+  }
+  return next({ ctx });
+});
+
+const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (!isAdminLevel(ctx.user.role)) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas administradores podem acessar' });
+  }
+  return next({ ctx });
+});
+
+const adminExportProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== 'admin') {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas o administrador principal pode exportar dados' });
+  }
+  return next({ ctx });
+});
 
 // ============================================================================
 // LEADS ROUTER
@@ -86,28 +124,6 @@ export const leadsRouter = router({
       const corretorId = ctx.user.role === 'corretor' ? ctx.user.id : undefined;
       if (!corretorId) return [];
       return await db.getNewWebhookLeadsSince(corretorId, new Date(input.since));
-    }),
-
-  // Kanban: retorna todos os leads ativos em uma única query, agrupados por status
-  kanban: protectedProcedure
-    .query(async ({ ctx }) => {
-      const { getCorretoresIdsParaFiltro } = await import('../equipes');
-      const corretoresIds = await getCorretoresIdsParaFiltro(ctx.user.id, ctx.user.role);
-      const corretorId = corretoresIds?.length === 1 ? corretoresIds[0] : undefined;
-
-      const result = await db.getAllLeads({
-        limit: 999999,
-        corretorId,
-        corretoresIds,
-      });
-
-      // Agrupar por status no servidor para evitar 9 queries no cliente
-      const byStatus: Record<string, typeof result.leads> = {};
-      for (const lead of result.leads) {
-        if (!byStatus[lead.status]) byStatus[lead.status] = [];
-        byStatus[lead.status].push(lead);
-      }
-      return byStatus;
     }),
 
   metricasDiarias: corretorProcedure

@@ -30,8 +30,6 @@ import {
   Copy,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SLAProgressBar, LeadTemperatureBadge } from "@/components/common";
-import { calcLeadTemperature } from "@shared/leadStatus";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -210,11 +208,6 @@ function CarteiraCard({ item, onRefresh }: { item: any; onRefresh: () => void })
                 {item.leadNome ?? `Lead #${item.leadId}`}
               </CardTitle>
               {badgeStatus(item.leadStatus)}
-              {item.leadStatus && item.leadUpdatedAt && (() => {
-                const hoursInStatus = (Date.now() - new Date(item.leadUpdatedAt).getTime()) / 3_600_000;
-                const temp = calcLeadTemperature(item.leadStatus, hoursInStatus, false);
-                return <LeadTemperatureBadge temperature={temp} />;
-              })()}
               {tarefasHoje.length > 0 && (
                 <Badge variant="outline" className="border-amber-400 text-amber-600 gap-1">
                   <Bell className="h-3 w-3" />
@@ -222,10 +215,6 @@ function CarteiraCard({ item, onRefresh }: { item: any; onRefresh: () => void })
                 </Badge>
               )}
             </div>
-            {item.leadStatus && item.leadUpdatedAt && (() => {
-              const hoursInStatus = (Date.now() - new Date(item.leadUpdatedAt).getTime()) / 3_600_000;
-              return <SLAProgressBar status={item.leadStatus} hoursInStatus={hoursInStatus} className="mt-1" />;
-            })()}
             <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
               {item.leadTelefone && (
                 <button

@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { SLAProgressBar } from "@/components/common";
 
 import {
   Phone, MessageSquare, CheckCircle2, XCircle, Clock,
@@ -253,10 +252,6 @@ export default function MeuFollowUp() {
                         <span className="text-orange-500">{lead.tentativas}/5 tentativas</span>
                       )}
                     </div>
-                    {lead.updatedAt && (() => {
-                      const hoursInStatus = (Date.now() - new Date(lead.updatedAt).getTime()) / 3_600_000;
-                      return <SLAProgressBar status={lead.status} hoursInStatus={hoursInStatus} className="mt-1" />;
-                    })()}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Badge variant="outline" className="text-xs">

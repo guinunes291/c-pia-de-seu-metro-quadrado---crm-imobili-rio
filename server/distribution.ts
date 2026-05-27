@@ -1,15 +1,14 @@
 import { getDb, notifyLeadDistribuido, countLeadsRecebidosHoje } from "./db";
 import { users, leads, conversionStats, distributionLog, leadEstoque } from "../drizzle/schema";
-import { eq, and, sql, isNull, inArray } from "drizzle-orm";
+import { eq, and, sql, isNull } from "drizzle-orm";
 
 // Configurações de distribuição
-// Regra: corretor elegível quando ≥ 60% dos seus leads foram trabalhados (status != aguardando_atendimento)
-// Ou seja: máximo 40% dos leads podem estar aguardando
-const PERCENTUAL_MINIMO_TRABALHADOS = 0.9; // 90% dos leads devem estar fora de aguardando (regra de elegibilidade por %)
-const PERCENTUAL_CONCLUSAO_MINIMO = 0.6; // 60% de conclusão mínima para desbloqueio
+// Regra: corretor elegível quando ≥ 90% dos seus leads têm status != aguardando_atendimento
+// Ou seja: máximo 10% dos leads podem estar aguardando
+const PERCENTUAL_MINIMO_TRABALHADOS = 0.9; // 90% dos leads devem estar fora de aguardando
 const LEADS_POR_RODADA = 30; // Leads enviados por rodada para cada corretor elegível
-// Lote inicial garantido: corretor com menos de 40 leads sempre recebe mais
-const MINIMO_LEADS_GARANTIDO = 40;
+// Aliases para compatibilidade com código legado
+const MINIMO_LEADS_GARANTIDO = LEADS_POR_RODADA;
 const MAXIMO_LEADS_AGUARDANDO = 20;
 const LIMITE_AGUARDANDO = 20;
 const LEADS_POR_RODADA_ESTOQUE = LEADS_POR_RODADA;
@@ -73,8 +72,6 @@ export async function isCorretorElegivel(corretorId: number): Promise<boolean> {
   const aguardandoNum = Number(aguardando) || 0;
   // Se não tem leads, é elegível (receberá o primeiro lote)
   if (totalNum === 0) return true;
-  // Elegível se total de leads < MINIMO_LEADS_GARANTIDO (lote inicial — ainda está sendo abastecido)
-  if (totalNum < MINIMO_LEADS_GARANTIDO) return true;
   // Elegível se pelo menos 90% dos leads estão com status != aguardando_atendimento
   const percentualTrabalhados = (totalNum - aguardandoNum) / totalNum;
   return percentualTrabalhados >= PERCENTUAL_MINIMO_TRABALHADOS;
@@ -215,25 +212,22 @@ export async function getCorretoresParaRedistribuicao(): Promise<number[]> {
 
   if (todosCorretores.length === 0) return [];
 
-  // Buscar carga de todos os corretores em uma única query com GROUP BY
-  const corretorIds = todosCorretores.map((c) => c.id);
-  const cargaRows = await db
-    .select({ corretorId: leads.corretorId, carga: sql<number>`COUNT(*)` })
-    .from(leads)
-    .where(
-      and(
-        inArray(leads.corretorId, corretorIds),
-        eq(leads.naLixeira, false),
-        sql`${leads.status} IN ('aguardando_atendimento', 'em_atendimento')`
-      )
-    )
-    .groupBy(leads.corretorId);
+  // Calcular carga atual de cada corretor (leads ativos)
+  const corretoresComCarga: Array<{ id: number; carga: number }> = [];
 
-  const cargaMap = new Map(cargaRows.map((r) => [r.corretorId, Number(r.carga)]));
-  const corretoresComCarga = todosCorretores.map((c) => ({
-    id: c.id,
-    carga: cargaMap.get(c.id) ?? 0,
-  }));
+  for (const corretor of todosCorretores) {
+    const [{ total }] = await db
+      .select({ total: sql<number>`COUNT(*)` })
+      .from(leads)
+      .where(
+        and(
+          eq(leads.corretorId, corretor.id),
+          eq(leads.naLixeira, false),
+          sql`${leads.status} IN ('aguardando_atendimento', 'em_atendimento')`
+        )
+      );
+    corretoresComCarga.push({ id: corretor.id, carga: Number(total) });
+  }
 
   // Ordenar por menor carga (distribuição mais justa)
   corretoresComCarga.sort((a, b) => a.carga - b.carga);
@@ -242,8 +236,7 @@ export async function getCorretoresParaRedistribuicao(): Promise<number[]> {
 }
 
 /**
- * Retorna lista de corretores elegíveis ordenados por melhor taxa de conversão.
- * Uses bulk queries instead of N+1 per-corretor checks.
+ * Retorna lista de corretores elegíveis ordenados por melhor taxa de conversão
  */
 export async function getCorretoresElegiveis(
   projectId?: number,
@@ -252,55 +245,44 @@ export async function getCorretoresElegiveis(
   const db = await getDb();
   if (!db) return [];
 
-  // Single query: all active corretores
+  // Buscar todos os corretores
   const todosCorretores = await db
-    .select({ id: users.id, status: users.status })
+    .select()
     .from(users)
-    .where(and(eq(users.role, "corretor"), eq(users.status, "presente")));
+    .where(eq(users.role, "corretor"));
 
-  if (todosCorretores.length === 0) return [];
+  // Filtrar corretores elegíveis
+  const corretoresElegiveis: Array<{ id: number; taxa: number }> = [];
 
-  const corretorIds = todosCorretores.map((c) => c.id);
-
-  // Single query: lead counts per corretor (total + aguardando)
-  const leadCountRows = await db
-    .select({
-      corretorId: leads.corretorId,
-      total: sql<number>`COUNT(*)`,
-      aguardando: sql<number>`SUM(CASE WHEN ${leads.status} = 'aguardando_atendimento' THEN 1 ELSE 0 END)`,
-    })
-    .from(leads)
-    .where(and(inArray(leads.corretorId, corretorIds), eq(leads.naLixeira, false)))
-    .groupBy(leads.corretorId);
-
-  const countMap = new Map(
-    leadCountRows.map((r) => [r.corretorId, { total: Number(r.total), aguardando: Number(r.aguardando) }])
-  );
-
-  // Determine eligible corretores without per-corretor queries
-  const elegiveis = todosCorretores.filter((c) => {
-    const counts = countMap.get(c.id) ?? { total: 0, aguardando: 0 };
-    if (counts.total === 0) return true;
-    if (counts.total < MINIMO_LEADS_GARANTIDO) return true;
-    return (counts.total - counts.aguardando) / counts.total >= PERCENTUAL_MINIMO_TRABALHADOS;
-  });
-
-  if (elegiveis.length === 0) return [];
-
-  // Fetch conversion rates in parallel for eligible corretores only
-  const elegivelIds = elegiveis.map((c) => c.id);
-  const taxas = await Promise.all(
-    elegivelIds.map(async (id) => {
+  for (const corretor of todosCorretores) {
+    const elegivel = await isCorretorElegivel(corretor.id);
+    
+    if (elegivel) {
       let taxa = 0;
-      if (projectId) taxa = await getTaxaConversaoPorProjeto(id, projectId);
-      if (taxa === 0 && regiao) taxa = await getTaxaConversaoPorRegiao(id, regiao);
-      if (taxa === 0) taxa = await getTaxaConversaoPorProjeto(id, null);
-      return { id, taxa };
-    })
-  );
 
-  taxas.sort((a, b) => b.taxa - a.taxa);
-  return taxas.map((c) => c.id);
+      // Priorizar taxa por projeto
+      if (projectId) {
+        taxa = await getTaxaConversaoPorProjeto(corretor.id, projectId);
+      }
+
+      // Se não houver taxa por projeto, usar taxa por região
+      if (taxa === 0 && regiao) {
+        taxa = await getTaxaConversaoPorRegiao(corretor.id, regiao);
+      }
+
+      // Se ainda não houver taxa, usar taxa geral
+      if (taxa === 0) {
+        taxa = await getTaxaConversaoPorProjeto(corretor.id, null);
+      }
+
+      corretoresElegiveis.push({ id: corretor.id, taxa });
+    }
+  }
+
+  // Ordenar por maior taxa de conversão
+  corretoresElegiveis.sort((a, b) => b.taxa - a.taxa);
+
+  return corretoresElegiveis.map((c) => c.id);
 }
 
 /**
@@ -353,23 +335,16 @@ export async function distribuirLeadAutomatico(
         leadData.origem || undefined
       );
 
-            // Se não houver corretores disponíveis, adicionar ao estoque
+      // Se não houver corretores disponíveis, adicionar ao estoque
       if (corretoresElegiveis.length === 0) {
-        // Verificar se já existe no estoque para evitar duplicata
-        const jaNoEstoque = await tx.select()
-          .from(leadEstoque)
-          .where(and(eq(leadEstoque.leadId, leadId), eq(leadEstoque.status, 'aguardando')))
-          .limit(1);
-        if (jaNoEstoque.length === 0) {
-          await tx.insert(leadEstoque).values({
-            leadId: leadId,
-            tipoFila: "normal",
-            motivoEstoque: "Nenhum corretor elegível disponível",
-            tentativasDistribuicao: 0,
-          });
-        }
-        // Retornar objeto de controle em vez de lançar exceção (para não fazer rollback)
-        return { adicionadoAoEstoque: true };
+        await tx.insert(leadEstoque).values({
+          leadId: leadId,
+          tipoFila: "normal",
+          motivoEstoque: "Nenhum corretor elegível disponível",
+          tentativasDistribuicao: 0,
+        });
+        
+        throw new Error("Nenhum corretor disponível. Lead adicionado ao estoque.");
       }
 
       // Selecionar o melhor corretor
@@ -397,17 +372,14 @@ export async function distribuirLeadAutomatico(
       return { corretorId: melhorCorretor, nome: leadData.nome };
     });
 
-        // Verificar se foi adicionado ao estoque
-    if ((result as any).adicionadoAoEstoque) {
-      return { success: false, message: "Nenhum corretor disponível. Lead adicionado ao estoque." };
-    }
     // Enviar notificação fora da transação (não crítico)
     try {
-      await notifyLeadDistribuido((result as any).corretorId, leadId, (result as any).nome);
+      await notifyLeadDistribuido(result.corretorId, leadId, result.nome);
     } catch (error) {
       console.error("Erro ao enviar notificação:", error);
     }
-    return { success: true, corretorId: (result as any).corretorId };
+
+    return { success: true, corretorId: result.corretorId };
   } catch (error: any) {
     return { success: false, message: error.message };
   }
@@ -725,8 +697,7 @@ async function getCorretoresElegiveisParaDistribuicao(): Promise<number[]> {
 }
 
 /**
- * Obtém estatísticas de distribuição de todos os corretores.
- * Uses bulk queries instead of N+1 per-corretor getCorretorStatus calls.
+ * Obtém estatísticas de distribuição de todos os corretores
  */
 export async function getEstatisticasDistribuicao(): Promise<CorretorStatus[]> {
   const db = await getDb();
@@ -737,67 +708,16 @@ export async function getEstatisticasDistribuicao(): Promise<CorretorStatus[]> {
     .from(users)
     .where(eq(users.role, "corretor"));
 
-  if (todosCorretores.length === 0) return [];
+  const estatisticas: CorretorStatus[] = [];
 
-  const corretorIds = todosCorretores.map((c) => c.id);
-
-  // Single bulk query for all lead counts
-  const leadCountRows = await db
-    .select({
-      corretorId: leads.corretorId,
-      total: sql<number>`COUNT(*)`,
-      trabalhados: sql<number>`SUM(CASE WHEN ${leads.status} = 'em_atendimento' THEN 1 ELSE 0 END)`,
-      aguardando: sql<number>`SUM(CASE WHEN ${leads.status} = 'aguardando_atendimento' THEN 1 ELSE 0 END)`,
-    })
-    .from(leads)
-    .where(
-      and(
-        inArray(leads.corretorId, corretorIds),
-        eq(leads.naLixeira, false),
-        sql`${leads.status} IN ('aguardando_atendimento', 'em_atendimento')`
-      )
-    )
-    .groupBy(leads.corretorId);
-
-  const countMap = new Map(
-    leadCountRows.map((r) => [
-      r.corretorId,
-      { total: Number(r.total), trabalhados: Number(r.trabalhados), aguardando: Number(r.aguardando) },
-    ])
-  );
-
-  return todosCorretores.map((corretor) => {
-    const counts = countMap.get(corretor.id) ?? { total: 0, trabalhados: 0, aguardando: 0 };
-    const taxaTrabalho = counts.total > 0 ? counts.trabalhados / counts.total : 0;
-    const elegivel =
-      corretor.status === "presente" &&
-      (counts.total === 0 ||
-        counts.total < MINIMO_LEADS_GARANTIDO ||
-        (counts.total - counts.aguardando) / counts.total >= PERCENTUAL_MINIMO_TRABALHADOS);
-
-    let motivoBloqueio: string | null = null;
-    if (!elegivel) {
-      if (corretor.status !== "presente") {
-        motivoBloqueio = "Ausente";
-      } else {
-        const pct = counts.total > 0 ? Math.round(((counts.total - counts.aguardando) / counts.total) * 100) : 0;
-        motivoBloqueio = `${pct}% trabalhados (mín. 90% — ${counts.aguardando} aguardando de ${counts.total})`;
-      }
+  for (const corretor of todosCorretores) {
+    const status = await getCorretorStatus(corretor.id);
+    if (status) {
+      estatisticas.push(status);
     }
+  }
 
-    return {
-      id: corretor.id,
-      nome: corretor.name || "",
-      email: corretor.email || "",
-      totalLeads: counts.total,
-      leadsTrabalhados: counts.trabalhados,
-      taxaTrabalho,
-      aguardandoLeads: counts.aguardando,
-      elegivel,
-      motivoBloqueio,
-      status: corretor.status || "ausente",
-    };
-  });
+  return estatisticas;
 }
 
 
@@ -823,11 +743,6 @@ export async function distribuirLeadsDoEstoque(): Promise<{
   // Buscar corretores elegíveis primeiro
   const corretoresElegiveis = await getCorretoresElegiveisParaDistribuicao();
   if (corretoresElegiveis.length === 0) {
-    // Incrementar tentativas dos leads em estoque
-    const agora = new Date();
-    await db.execute(
-      sql`UPDATE ${leadEstoque} SET tentativasDistribuicao = tentativasDistribuicao + 1, ultimaTentativa = ${agora} WHERE status = 'aguardando'`
-    );
     return { distribuidos: 0, erros: 0, mensagens: ["Nenhum corretor elegível disponível"] };
   }
 

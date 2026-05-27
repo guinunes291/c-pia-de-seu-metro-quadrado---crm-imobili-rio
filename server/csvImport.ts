@@ -245,22 +245,7 @@ export async function importLeadsFromCSV(
         const nome = mapping.nome !== undefined ? row[mapping.nome] : '';
         const telefone = mapping.telefone !== undefined ? row[mapping.telefone] : '';
         const email = mapping.email !== undefined ? row[mapping.email] : '';
-        const origemRaw = (mapping.origem !== undefined ? row[mapping.origem] : '') || '';
-        // Mapear origem para valores válidos do ENUM
-        const origemValidos = ['facebook', 'google_sheets', 'site', 'indicacao', 'captacao_corretor', 'whatsapp', 'telefone', 'plantao', 'agendamento_self_service', 'chatbot', 'outro'];
-        const origemNorm = origemRaw.toLowerCase().trim();
-        const origemMapeada: Record<string, string> = {
-          'facebook': 'facebook', 'instagram': 'facebook', 'meta': 'facebook', 'fb': 'facebook',
-          'google_sheets': 'google_sheets', 'planilha': 'google_sheets', 'csv': 'google_sheets', 'excel': 'google_sheets',
-          'site': 'site', 'website': 'site', 'formulario': 'site', 'formulário': 'site',
-          'indicacao': 'indicacao', 'indicação': 'indicacao',
-          'whatsapp': 'whatsapp', 'zap': 'whatsapp', 'wpp': 'whatsapp',
-          'telefone': 'telefone', 'ligacao': 'telefone', 'ligação': 'telefone', 'ligue': 'telefone',
-          'plantao': 'plantao', 'plantão': 'plantao',
-          'chatbot': 'chatbot', 'bot': 'chatbot',
-          'captacao_corretor': 'captacao_corretor', 'captação': 'captacao_corretor',
-        };
-        const origem = (origemMapeada[origemNorm] || (origemValidos.includes(origemNorm) ? origemNorm : 'outro')) as any;
+        const origem = mapping.origem !== undefined ? row[mapping.origem] : 'CSV';
         const observacoes = mapping.observacoes !== undefined ? row[mapping.observacoes] : '';
         const projetoNome = mapping.projeto !== undefined ? row[mapping.projeto] : '';
         
@@ -306,12 +291,9 @@ export async function importLeadsFromCSV(
         let projetoCustom: string | null = null;
         
         if (projetoNome && projetoNome.trim()) {
-          // Buscar projeto por nome
-          const { projects } = await import('../drizzle/schema');
-          const { eq: eqOp, like } = await import('drizzle-orm');
-          const projetos = await db.select().from(projects).where(like(projects.name, `%${projetoNome.trim()}%`)).limit(1);
-          if (projetos.length > 0) {
-            projectId = projetos[0].id;
+          const projeto = await db.findProjectByName(projetoNome.trim());
+          if (projeto) {
+            projectId = projeto.id;
           } else {
             // Se projeto não existe no banco, salvar como texto livre
             projetoCustom = projetoNome.trim();

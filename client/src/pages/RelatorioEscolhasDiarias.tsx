@@ -6,7 +6,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { CheckCircle2, XCircle, Calendar, TrendingUp, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import DashboardLayout from "@/components/DashboardLayout";
 
 type PeriodOption = 'ultimos7' | 'ultimos30' | 'ultimos90' | 'todoperiodo';
 
@@ -77,8 +76,6 @@ export default function RelatorioEscolhasDiarias() {
   }
 
   return (
-    <DashboardLayout>
-
     <div className="container py-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -271,7 +268,5 @@ export default function RelatorioEscolhasDiarias() {
         </CardContent>
       </Card>
     </div>
-  
-    </DashboardLayout>
-    );
+  );
 }

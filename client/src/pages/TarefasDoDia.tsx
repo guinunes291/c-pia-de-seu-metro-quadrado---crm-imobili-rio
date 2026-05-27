@@ -47,7 +47,6 @@ import {
 import { useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { toast } from "sonner";
-import { SLAProgressBar } from "@/components/common";
 
 type TipoTarefa = "follow_up" | "agendamento" | "ligacao" | "whatsapp" | "email" | "visita" | "documentacao" | "outro";
 type Prioridade = "baixa" | "media" | "alta";
@@ -400,39 +399,20 @@ export default function TarefasDoDia() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm">{item.leadNome}</p>
-                      {item.leadTelefone && (
-                        <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {item.leadTelefone}
-                        </p>
-                      )}
                       <p className="text-xs text-muted-foreground mt-0.5">{item.motivo}</p>
                       <p className="text-xs text-purple-700 dark:text-purple-400 font-medium mt-1 flex items-center gap-1">
                         <ChevronRight className="h-3 w-3 shrink-0" />
                         {item.acao}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {item.leadTelefone && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-green-600 hover:bg-green-50"
-                          title="WhatsApp"
-                          onClick={() => window.open(gerarLinkWhatsApp(item.leadTelefone, item.leadNome), '_blank')}
-                        >
-                          <MessageCircle className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="shrink-0 text-xs h-7 px-2"
-                        onClick={() => window.location.href = `/leads?leadId=${item.leadId}`}
-                      >
-                        Ver
-                      </Button>
-                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 text-xs h-7 px-2"
+                      onClick={() => window.location.href = `/leads?leadId=${item.leadId}`}
+                    >
+                      Ver lead
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -497,10 +477,6 @@ export default function TarefasDoDia() {
                         <p className="text-xs text-muted-foreground mt-1">
                           Follow-up do dia
                         </p>
-                        {followUp.leadStatus && followUp.leadUpdatedAt && (() => {
-                          const hoursInStatus = (Date.now() - new Date(followUp.leadUpdatedAt).getTime()) / 3_600_000;
-                          return <SLAProgressBar status={followUp.leadStatus} hoursInStatus={hoursInStatus} className="mt-1.5 max-w-[180px]" />;
-                        })()}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 sm:gap-3">
@@ -615,26 +591,22 @@ export default function TarefasDoDia() {
                             </span>
                           )}
                         </div>
-                        {lead.updatedAt && (() => {
-                          const hoursInStatus = (Date.now() - new Date(lead.updatedAt).getTime()) / 3_600_000;
-                          return <SLAProgressBar status={lead.status} hoursInStatus={hoursInStatus} className="mt-1.5 max-w-[180px]" />;
-                        })()}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       {lead.telefone && (
-                        <Button
-                          size="sm"
+                        <Button 
+                          size="sm" 
                           variant="outline"
                           onClick={() => window.open(gerarLinkWhatsApp(lead.telefone || '', lead.nome), '_blank')}
                         >
                           <MessageCircle className="h-4 w-4" />
                         </Button>
                       )}
-                      <Button
-                        size="sm"
+                      <Button 
+                        size="sm" 
                         variant="outline"
-                        onClick={() => window.open(`/leads?leadId=${lead.id}`, '_self')}
+                        onClick={() => window.open(`/leads?id=${lead.id}`, '_self')}
                       >
                         Ver Lead
                       </Button>

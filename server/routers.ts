@@ -2,7 +2,6 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
-import { corretorProcedure, gestorProcedure, adminProcedure, adminExportProcedure, isGestorLevel, isAdminLevel } from "./_core/rbac";
 import { cacheGetOrSet, CACHE_TTL, dashboardCacheKey } from "./_core/cache";
 import { z } from "zod";
 import * as db from "./db";
@@ -42,6 +41,46 @@ import { linksUteisRouter } from "./routers/linksUteis";
 // HELPERS E MIDDLEWARES
 // ============================================================================
 
+// Helper: verifica se o role tem visão de gestor (gestor, admin, superintendente)
+function isGestorLevel(role: string): boolean {
+  return role === 'gestor' || role === 'admin' || role === 'superintendente';
+}
+
+// Helper: verifica se é admin ou superintendente (acesso total)
+function isAdminLevel(role: string): boolean {
+  return role === 'admin' || role === 'superintendente';
+}
+
+const corretorProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== 'corretor' && !isGestorLevel(ctx.user.role)) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso negado' });
+  }
+  return next({ ctx });
+});
+
+const gestorProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (!isGestorLevel(ctx.user.role)) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas gestores podem acessar' });
+  }
+  return next({ ctx });
+});
+
+// Middleware para admin (apenas admin, não gestor)
+const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (!isAdminLevel(ctx.user.role)) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas administradores podem acessar' });
+  }
+  return next({ ctx });
+});
+
+// Procedure exclusiva para admin real (sem superintendente) - usada para exportação de dados
+const adminExportProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== 'admin') {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Apenas o administrador principal pode exportar dados' });
+  }
+  return next({ ctx });
+});
+
 // Middleware para gestor restrito (apenas sua equipe)
 const gestorRestritoProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (!isGestorLevel(ctx.user.role)) {
@@ -80,6 +119,8 @@ export const appRouter = router({
   meuNegocio: meuNegocioRouter,
   relatorioDiario: relatorioDiarioRouter,
   scripts: scriptsRouter,
+  ofertaAtiva: ofertaAtivaRouter,
+  linksUteis: linksUteisRouter,
   
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
@@ -325,16 +366,6 @@ export const appRouter = router({
   analytics: analyticsRouter,
 
   // ============================================================================
-  // OFERTA ATIVA (extraído para server/routers/ofertaAtiva.ts)
-  // ============================================================================
-  ofertaAtiva: ofertaAtivaRouter,
-
-  // ============================================================================
-  // LINKS ÚTEIS (extraído para server/routers/linksUteis.ts)
-  // ============================================================================
-  linksUteis: linksUteisRouter,
-
-  // ============================================================================
   // CONSTRUTORAS (extraído para server/routers/construtoras.ts)
   // ============================================================================
   construtoras: construtorasRouter,
@@ -350,15 +381,18 @@ export const appRouter = router({
       const { getCorretoresIdsParaFiltro } = await import('./equipes');
       const corretoresIds = await getCorretoresIdsParaFiltro(ctx.user.id, ctx.user.role);
       
+      console.log('[corretores.list] User:', ctx.user.email, 'Role:', ctx.user.role, 'CorretoresIds:', corretoresIds);
       
       // Se for admin, retorna todos os corretores
       if (!corretoresIds) {
         const result = await db.getAllCorretores();
+        console.log('[corretores.list] Admin - Retornando todos:', result.length, 'corretores');
         return result;
       }
       
       // Se for gestor, retorna apenas os corretores da sua equipe
       const result = await db.getCorretoresByIds(corretoresIds);
+      console.log('[corretores.list] Gestor - Retornando:', result.length, 'corretores da equipe');
       return result;
     }),
     
@@ -465,8 +499,6 @@ export const appRouter = router({
           dataCredenciamento: z.coerce.date().nullable().optional(),
           dataDescredenciamento: z.coerce.date().nullable().optional(),
           situacao: z.enum(["ativo", "inativo"]).optional(),
-          // Permissões
-          acessaLinksUteis: z.boolean().optional(),
           // Endereço
           logradouro: z.string().optional(),
           numero: z.string().optional(),
@@ -593,21 +625,24 @@ export const appRouter = router({
         const corretores = await db.getAllCorretores();
         const { inicioDoDiaHoje } = await import('./timezone');
         const hoje = inicioDoDiaHoje();
-
-        // Bulk query instead of N per-corretor queries
-        const corretorIds = corretores.map((c) => c.id);
-        const leadsHojeMap = await db.countLeadsRecebidosHojeBulk(corretorIds, hoje);
-
-        return corretores.map((corretor) => ({
-          corretorId: corretor.id,
-          nome: corretor.name,
-          email: corretor.email,
-          fotoUrl: corretor.fotoUrl,
-          limiteDiarioLeads: corretor.limiteDiarioLeads || 50,
-          limiteDiarioWebhook: corretor.limiteDiarioWebhook || 10,
-          leadsRecebidosHoje: leadsHojeMap.get(corretor.id) ?? 0,
-          status: corretor.status,
+        
+        const limites = await Promise.all(corretores.map(async (corretor) => {
+          // Contar leads recebidos hoje
+          const leadsHoje = await db.countLeadsRecebidosHoje(corretor.id, hoje);
+          
+          return {
+            corretorId: corretor.id,
+            nome: corretor.name,
+            email: corretor.email,
+            fotoUrl: corretor.fotoUrl,
+            limiteDiarioLeads: corretor.limiteDiarioLeads || 50,
+            limiteDiarioWebhook: corretor.limiteDiarioWebhook || 10,
+            leadsRecebidosHoje: leadsHoje,
+            status: corretor.status,
+          };
         }));
+        
+        return limites;
       }),
     
     // Configurar limite diário de distribuição automática
@@ -2455,43 +2490,46 @@ export const appRouter = router({
           corretores = await db.getCorretoresAtivos();
         }
         
-        // Single bulk query instead of N per-corretor queries
-        const corretorIds = corretores.map((c) => c.id);
-        const followUpsBulkMap = await db.getTotalFollowUpsDoDiaBulk(corretorIds, hoje);
-
-        const progressos = corretores.map((corretor) => {
-          const totalFollowUps = followUpsBulkMap.get(corretor.id) ?? [];
-          const total = totalFollowUps.length;
-
-          const concluidos = totalFollowUps.filter(f => {
-            if (!f.ultimaTentativa) return false;
-            const ultimaTentativaDate = new Date(f.ultimaTentativa);
-            return ultimaTentativaDate >= hoje && ultimaTentativaDate < amanha;
-          }).length;
-
-          const ultimoFollowUp = totalFollowUps
-            .filter(f => f.ultimaTentativa)
-            .sort((a, b) => {
-              const dateA = a.ultimaTentativa ? new Date(a.ultimaTentativa).getTime() : 0;
-              const dateB = b.ultimaTentativa ? new Date(b.ultimaTentativa).getTime() : 0;
-              return dateB - dateA;
-            })[0];
-
-          const percentual = total > 0 ? Math.round((concluidos / total) * 100) : 100;
-          const desbloqueado = total === 0 ? true : percentual >= 40;
-
-          return {
-            corretorId: corretor.id,
-            corretorNome: corretor.name,
-            corretorEmail: corretor.email,
-            total,
-            concluidos,
-            percentual,
-            desbloqueado,
-            ultimoFollowUp: ultimoFollowUp?.ultimaTentativa || null,
-          };
-        });
-
+        // Calcular progresso de cada corretor
+        const progressos = await Promise.all(
+          corretores.map(async (corretor) => {
+            // Total de follow-ups do dia
+            const totalFollowUps = await db.getTotalFollowUpsDoDia(corretor.id, hoje, amanha);
+            const total = totalFollowUps.length;
+            
+            // Follow-ups concluídos hoje
+            const concluidos = totalFollowUps.filter(f => {
+              if (!f.ultimaTentativa) return false;
+              const ultimaTentativaDate = new Date(f.ultimaTentativa);
+              return ultimaTentativaDate >= hoje && ultimaTentativaDate < amanha;
+            }).length;
+            
+            // Encontrar horário do último follow-up
+            const ultimoFollowUp = totalFollowUps
+              .filter(f => f.ultimaTentativa)
+              .sort((a, b) => {
+                const dateA = a.ultimaTentativa ? new Date(a.ultimaTentativa).getTime() : 0;
+                const dateB = b.ultimaTentativa ? new Date(b.ultimaTentativa).getTime() : 0;
+                return dateB - dateA;
+              })[0];
+            
+            const percentual = total > 0 ? Math.round((concluidos / total) * 100) : 100;
+            const desbloqueado = total === 0 ? true : percentual >= 40;
+            
+            return {
+              corretorId: corretor.id,
+              corretorNome: corretor.name,
+              corretorEmail: corretor.email,
+              total,
+              concluidos,
+              percentual,
+              desbloqueado,
+              ultimoFollowUp: ultimoFollowUp?.ultimaTentativa || null,
+            };
+          })
+        );
+        
+        // Ordenar por percentual (maior primeiro)
         return progressos.sort((a, b) => b.percentual - a.percentual);
       }),
     // Calcular progresso de follow-ups do dia (para bloqueio gamificado)
@@ -2610,6 +2648,7 @@ export const appRouter = router({
         const dataFim = input?.dataFim || hoje;
         const dataInicio = input?.dataInicio || new Date(hoje.getTime() - 30 * 24 * 60 * 60 * 1000);
 
+        console.log('[Relatório] Buscando escolhas entre', dataInicio.toISOString(), 'e', dataFim.toISOString());
 
         // Buscar escolhas usando helper
         const escolhas = await db.getEscolhasDiarias({
@@ -2618,6 +2657,7 @@ export const appRouter = router({
           corretorId: input?.corretorId,
         });
 
+        console.log('[Relatório] Encontradas', escolhas.length, 'escolhas');
 
         // Calcular estatísticas
         const totalEscolhas = escolhas.length;
@@ -3704,6 +3744,7 @@ export const appRouter = router({
             // Se houver alterações, atualizar o lead
             if (Object.keys(dadosAlterados).length > 0) {
               await db.updateLead(leadId, dadosAlterados);
+              console.log(`[Agendamento] Lead ${leadId} atualizado com novos dados:`, dadosAlterados);
             }
           }
         } else {
@@ -3852,6 +3893,7 @@ export const appRouter = router({
             (payload as any).mensagemWhatsApp = mensagemWhatsApp;
             
             await enviarWebhookZapier(zapierWebhookUrl, payload);
+            console.log('[Agendamento] Webhook enviado para Zapier:', input.telefone);
           } catch (zapierError) {
             // Não falhar o agendamento se o webhook falhar
             console.error('[Agendamento] Erro ao enviar webhook Zapier:', zapierError);
@@ -3871,6 +3913,7 @@ export const appRouter = router({
               endereco: projeto?.endereco
             });
             
+            console.log('[Agendamento] Confirmação enviada via WhatsApp para:', input.telefone);
           } catch (whatsappError) {
             // Não falhar o agendamento se o WhatsApp falhar
             console.error('[Agendamento] Erro ao enviar WhatsApp:', whatsappError);
@@ -4013,55 +4056,6 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         return await db.converterConversaEmLead(input.sessionId, input.corretorId);
-      }),
-    // ── FAQ Admin ──────────────────────────────────────────────────────────
-    // Listar todas as FAQs (incluindo inativas) para o painel admin
-    listAllFaqs: gestorProcedure
-      .input(z.object({ categoria: z.string().optional() }).optional())
-      .query(async ({ input }) => {
-        return await db.getFaqsChatbot(input?.categoria);
-      }),
-    // Criar nova FAQ
-    createFaq: gestorProcedure
-      .input(z.object({
-        pergunta: z.string().min(5),
-        resposta: z.string().min(5),
-        categoria: z.enum(["financiamento","documentacao","visita","preco","localizacao","empreendimento","empresa","geral"]).default("geral"),
-        palavrasChave: z.string().optional(),
-        projectId: z.number().optional(),
-        prioridade: z.number().default(0),
-        ativo: z.boolean().default(true),
-      }))
-      .mutation(async ({ input }) => {
-        return await db.createFaqChatbot(input);
-      }),
-    // Atualizar FAQ existente
-    updateFaq: gestorProcedure
-      .input(z.object({
-        id: z.number(),
-        pergunta: z.string().min(5).optional(),
-        resposta: z.string().min(5).optional(),
-        categoria: z.enum(["financiamento","documentacao","visita","preco","localizacao","empreendimento","empresa","geral"]).optional(),
-        palavrasChave: z.string().optional(),
-        projectId: z.number().optional(),
-        prioridade: z.number().optional(),
-        ativo: z.boolean().optional(),
-      }))
-      .mutation(async ({ input }) => {
-        const { id, ...data } = input;
-        return await db.updateFaqChatbot(id, data);
-      }),
-    // Deletar FAQ (soft delete)
-    deleteFaq: gestorProcedure
-      .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        return await db.deleteFaqChatbot(input.id);
-      }),
-    // Buscar FAQs por texto
-    searchFaq: gestorProcedure
-      .input(z.object({ query: z.string().min(2) }))
-      .query(async ({ input }) => {
-        return await db.searchFaqChatbot(input.query);
       }),
   }),
 
@@ -4449,6 +4443,7 @@ export const appRouter = router({
 
         for (const arq of input.arquivos) {
           try {
+            console.log(`[Drive Import] Baixando: ${arq.nomeArquivo}`);
             const buffer = await downloadFileFromDrive(arq.driveFileId);
             await processTabelaoFromBuffer(arq.construtoraId, buffer, input.mes, input.ano);
             iniciados++;
@@ -4546,23 +4541,21 @@ export const appRouter = router({
   // METAS GLOBAIS E DASHBOARD DE PERFORMANCE
   // ============================================================================
   metasGlobais: router({
-    // Buscar meta global do mês/ano (cria com zeros se não existir)
+    // Buscar meta global do mês/ano
     get: gestorProcedure
       .input(z.object({
         mes: z.number().min(1).max(12),
         ano: z.number(),
       }))
       .query(async ({ input }) => {
-        // Upsert: retorna existente ou cria com zeros
-        return await db.upsertMetaGlobal(input.mes, input.ano, {});
+        return await db.getMetaGlobal(input.mes, input.ano);
       }),
     
     // Criar ou atualizar meta global por mês/ano (upsert)
     update: adminProcedure
       .input(z.object({
-        id: z.number().optional(),
-        mes: z.number().min(1).max(12).optional(),
-        ano: z.number().optional(),
+        mes: z.number().min(1).max(12),
+        ano: z.number(),
         metaVGV: z.string().optional(),
         metaContratos: z.number().optional(),
         metaLeads: z.number().optional(),
@@ -4570,8 +4563,7 @@ export const appRouter = router({
         metaVisitas: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
-        const { id: _id, mes, ano, ...data } = input;
-        if (!mes || !ano) return null;
+        const { mes, ano, ...data } = input;
         return await db.upsertMetaGlobal(mes, ano, data);
       }),
   }),
@@ -4881,14 +4873,10 @@ export const appRouter = router({
           mensagem,
           lido: false,
         });
-
-        // Push via SSE for instant in-app notification
-        const { notifySSEUser } = await import('./sseManager');
-        notifySSEUser(input.corretorId, 'alerta', { leadId: input.leadId, mensagem });
-
+        
         return { success: true, duplicata: false };
       }),
-
+    
     // Listar alertas do corretor logado
     meus: protectedProcedure
       .input(z.object({

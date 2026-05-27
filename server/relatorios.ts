@@ -1,6 +1,6 @@
 import { getDb } from "./db";
-import { leads, projects, users, contratos } from "../drizzle/schema";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { leads, projects, users } from "../drizzle/schema";
+import { eq, and, sql } from "drizzle-orm";
 
 interface ConversaoPorProjeto {
   projectId: number;
@@ -15,12 +15,11 @@ interface ConversaoPorProjeto {
   taxaAgendamento: number; // % de leads agendados
   taxaVisita: number; // % de visitas realizadas
   taxaConversao: number; // % de contratos fechados
-  ticketMedio: number; // Valor médio dos contratos em R$
+  ticketMedio: number; // Valor médio dos contratos (se disponível)
 }
 
 /**
- * Calcula estatísticas de conversão por projeto.
- * Corrigido: batch query única em vez de N+1 (1 query por projeto).
+ * Calcula estatísticas de conversão por projeto
  */
 export async function calcularConversaoPorProjeto(
   periodo?: { dataInicio?: Date; dataFim?: Date },
@@ -29,67 +28,42 @@ export async function calcularConversaoPorProjeto(
   const db = await getDb();
   if (!db) return [];
 
-  // 1. Buscar todos os projetos em uma query
+  // Buscar todos os projetos
   const todosProjetos = await db.select().from(projects);
-  if (todosProjetos.length === 0) return [];
-
-  // 2. Buscar TODOS os leads de uma vez (batch) com filtro de período
-  let todosLeads;
-  if (periodo?.dataInicio && periodo?.dataFim) {
-    todosLeads = await db
-      .select()
-      .from(leads)
-      .where(
-        and(
-          sql`${leads.createdAt} >= ${periodo.dataInicio}`,
-          sql`${leads.createdAt} <= ${periodo.dataFim}`
-        )
-      );
-  } else {
-    todosLeads = await db.select().from(leads);
-  }
-
-  // Filtrar por equipe se necessário
-  if (corretoresIds) {
-    todosLeads = todosLeads.filter(l => l.corretorId && corretoresIds.includes(l.corretorId));
-  }
-
-  // 3. Buscar contratos dos leads com contrato_fechado para calcular ticketMedio
-  const leadIdsComContrato = todosLeads
-    .filter(l => l.status === "contrato_fechado")
-    .map(l => l.id);
-
-  const contratosMap = new Map<number, number>(); // leadId -> valorVenda
-  if (leadIdsComContrato.length > 0) {
-    const contratosResult = await db
-      .select({ leadId: contratos.leadId, valorVenda: contratos.valorVenda })
-      .from(contratos)
-      .where(and(
-        inArray(contratos.leadId, leadIdsComContrato),
-        eq(contratos.distrato, false)
-      ));
-    for (const c of contratosResult) {
-      if (c.valorVenda && c.leadId) {
-        contratosMap.set(c.leadId, parseFloat(c.valorVenda));
-      }
-    }
-  }
-
-  // 4. Agrupar leads por projeto em memória
-  const leadsPorProjeto = new Map<number, typeof todosLeads>();
-  for (const lead of todosLeads) {
-    if (!lead.projectId) continue;
-    if (!leadsPorProjeto.has(lead.projectId)) {
-      leadsPorProjeto.set(lead.projectId, []);
-    }
-    leadsPorProjeto.get(lead.projectId)!.push(lead);
-  }
 
   const resultado: ConversaoPorProjeto[] = [];
 
   for (const projeto of todosProjetos) {
-    const leadsDoProjeto = leadsPorProjeto.get(projeto.id) ?? [];
-    if (leadsDoProjeto.length === 0) continue;
+    // Buscar leads do projeto com filtro de período e equipe se fornecido
+    let leadsDoProjeto;
+    
+    if (periodo?.dataInicio && periodo?.dataFim) {
+      leadsDoProjeto = await db
+        .select()
+        .from(leads)
+        .where(
+          and(
+            eq(leads.projectId, projeto.id),
+            sql`${leads.createdAt} >= ${periodo.dataInicio}`,
+            sql`${leads.createdAt} <= ${periodo.dataFim}`
+          )
+        );
+    } else {
+      leadsDoProjeto = await db
+        .select()
+        .from(leads)
+        .where(eq(leads.projectId, projeto.id));
+    }
+    
+    // Filtrar por equipe se necessário
+    if (corretoresIds) {
+      leadsDoProjeto = leadsDoProjeto.filter(l => l.corretorId && corretoresIds.includes(l.corretorId));
+    }
+
+    if (leadsDoProjeto.length === 0) {
+      // Projeto sem leads, pular
+      continue;
+    }
 
     const totalLeads = leadsDoProjeto.length;
     const leadsContatados = leadsDoProjeto.filter(
@@ -113,14 +87,6 @@ export async function calcularConversaoPorProjeto(
     const taxaVisita = leadsAgendados > 0 ? (visitasRealizadas / leadsAgendados) * 100 : 0;
     const taxaConversao = totalLeads > 0 ? (contratosFechados / totalLeads) * 100 : 0;
 
-    // Calcular ticket médio usando contratos.valorVenda
-    const valoresContratos = leadsDoProjeto
-      .filter(l => l.status === "contrato_fechado" && contratosMap.has(l.id))
-      .map(l => contratosMap.get(l.id)!);
-    const ticketMedio = valoresContratos.length > 0
-      ? valoresContratos.reduce((a, b) => a + b, 0) / valoresContratos.length
-      : 0;
-
     resultado.push({
       projectId: projeto.id,
       projectNome: projeto.nome,
@@ -134,7 +100,7 @@ export async function calcularConversaoPorProjeto(
       taxaAgendamento: Math.round(taxaAgendamento * 100) / 100,
       taxaVisita: Math.round(taxaVisita * 100) / 100,
       taxaConversao: Math.round(taxaConversao * 100) / 100,
-      ticketMedio: Math.round(ticketMedio * 100) / 100,
+      ticketMedio: 0, // TODO: Implementar quando houver campo de valor
     });
   }
 
@@ -157,12 +123,11 @@ interface ConversaoPorCorretor {
   taxaAgendamento: number;
   taxaVisita: number;
   taxaConversao: number;
-  tempoMedioResposta: number; // Em minutos (média do campo tempoAtePrimeiroContato)
+  tempoMedioResposta: number; // Em horas
 }
 
 /**
- * Calcula estatísticas de conversão por corretor.
- * Corrigido: batch query única em vez de N+1 (1 query por corretor).
+ * Calcula estatísticas de conversão por corretor
  */
 export async function calcularConversaoPorCorretor(
   periodo?: { dataInicio?: Date; dataFim?: Date },
@@ -171,58 +136,55 @@ export async function calcularConversaoPorCorretor(
   const db = await getDb();
   if (!db) return [];
 
-  // 1. Buscar TODOS os leads de uma vez (batch) com filtro de período
-  let todosLeads;
-  if (periodo?.dataInicio && periodo?.dataFim) {
-    todosLeads = await db
-      .select()
-      .from(leads)
-      .where(
-        and(
-          sql`${leads.corretorId} IS NOT NULL`,
-          sql`${leads.createdAt} >= ${periodo.dataInicio}`,
-          sql`${leads.createdAt} <= ${periodo.dataFim}`
-        )
-      );
-  } else {
-    todosLeads = await db
-      .select()
-      .from(leads)
-      .where(sql`${leads.corretorId} IS NOT NULL`);
-  }
-
-  // Filtrar por equipe se necessário
-  if (corretoresIds) {
-    todosLeads = todosLeads.filter(l => l.corretorId && corretoresIds.includes(l.corretorId));
-  }
-
-  if (todosLeads.length === 0) return [];
-
-  // 2. Buscar todos os corretores relevantes em uma query
-  const corretorIdsUnicos = [...new Set(todosLeads.map(l => l.corretorId!).filter(Boolean))];
-  const corretoresResult = await db
-    .select({ id: users.id, name: users.name })
-    .from(users)
-    .where(inArray(users.id, corretorIdsUnicos));
-
-  const corretoresMap = new Map(corretoresResult.map(c => [c.id, c.name || ""]));
-
-  // 3. Agrupar leads por corretor em memória
-  const leadsPorCorretor = new Map<number, typeof todosLeads>();
-  for (const lead of todosLeads) {
-    if (!lead.corretorId) continue;
-    if (!leadsPorCorretor.has(lead.corretorId)) {
-      leadsPorCorretor.set(lead.corretorId, []);
-    }
-    leadsPorCorretor.get(lead.corretorId)!.push(lead);
-  }
+  // Buscar todos os corretores com leads
+  let query = db
+    .select({
+      corretorId: leads.corretorId,
+    })
+    .from(leads)
+    .where(sql`${leads.corretorId} IS NOT NULL`);
+  
+  const corretoresComLeads = await query.groupBy(leads.corretorId);
 
   const resultado: ConversaoPorCorretor[] = [];
 
-  for (const [corretorId, leadsDoCorretor] of leadsPorCorretor) {
-    if (leadsDoCorretor.length === 0) continue;
+  for (const { corretorId } of corretoresComLeads) {
+    if (!corretorId) continue;
+    
+    // Filtrar por equipe se necessário
+    if (corretoresIds && !corretoresIds.includes(corretorId)) continue;
 
-    const corretorNome = corretoresMap.get(corretorId) ?? "";
+    // Buscar dados do corretor
+    const corretor = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, corretorId))
+      .limit(1);
+
+    if (corretor.length === 0) continue;
+
+    // Buscar leads do corretor com filtro de período
+    let leadsDoCorretor;
+    
+    if (periodo?.dataInicio && periodo?.dataFim) {
+      leadsDoCorretor = await db
+        .select()
+        .from(leads)
+        .where(
+          and(
+            eq(leads.corretorId, corretorId),
+            sql`${leads.createdAt} >= ${periodo.dataInicio}`,
+            sql`${leads.createdAt} <= ${periodo.dataFim}`
+          )
+        );
+    } else {
+      leadsDoCorretor = await db
+        .select()
+        .from(leads)
+        .where(eq(leads.corretorId, corretorId));
+    }
+
+    if (leadsDoCorretor.length === 0) continue;
 
     const totalLeads = leadsDoCorretor.length;
     const leadsContatados = leadsDoCorretor.filter(
@@ -246,17 +208,13 @@ export async function calcularConversaoPorCorretor(
     const taxaVisita = leadsAgendados > 0 ? (visitasRealizadas / leadsAgendados) * 100 : 0;
     const taxaConversao = totalLeads > 0 ? (contratosFechados / totalLeads) * 100 : 0;
 
-    // Calcular tempo médio de resposta usando campo tempoAtePrimeiroContato (em minutos)
-    const temposResposta = leadsDoCorretor
-      .filter(l => l.tempoAtePrimeiroContato !== null && l.tempoAtePrimeiroContato !== undefined)
-      .map(l => l.tempoAtePrimeiroContato!);
-    const tempoMedioResposta = temposResposta.length > 0
-      ? Math.round(temposResposta.reduce((a, b) => a + b, 0) / temposResposta.length)
-      : 0;
+    // Calcular tempo médio de resposta (simplificado)
+    // TODO: Implementar cálculo real baseado em leadHistory
+    const tempoMedioResposta = 0;
 
     resultado.push({
-      corretorId,
-      corretorNome,
+      corretorId: corretor[0].id,
+      corretorNome: corretor[0].name || "",
       totalLeads,
       leadsContatados,
       leadsAgendados,

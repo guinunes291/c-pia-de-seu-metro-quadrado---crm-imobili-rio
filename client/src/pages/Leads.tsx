@@ -1,5 +1,4 @@
 import DashboardLayout from "@/components/DashboardLayout";
-import { getSlaStatus, calcLeadScore, formatTimeAgo } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
 import {
@@ -75,8 +74,6 @@ import { DateRangeFilter, DateRangePreset } from "@/components/DateRangeFilter";
 import { getDateRangeFromPreset } from "@/lib/dateRangeUtils";
 import { ExecutandoComIA } from "@/components/ExecutandoComIA";
 import { CarteiraAtivaQuickButton } from "@/pages/CarteiraAtiva";
-import { useLeadsFilters } from "@/features/leads/hooks/useLeadsFilters";
-import { SLAProgressBar, LeadTemperatureBadge } from "@/components/common";
 
 const statusLabels: Record<string, string> = {
   novo: "Novo",
@@ -126,54 +123,36 @@ const origemLabels: Record<string, string> = {
 };
 
 export default function Leads() {
-  // Filtros sincronizados com URL — sobrevivem a reload e podem ser compartilhados
-  const { filters, setFilters } = useLeadsFilters();
-  const pageSize = 50;
-
-  // Busca local com debounce — atualiza URL após 500ms
-  const [localSearch, setLocalSearch] = useState(filters.search);
-  useEffect(() => {
-    const timer = setTimeout(() => setFilters({ search: localSearch }), 500);
-    return () => clearTimeout(timer);
-  }, [localSearch]);
-
-  // Sincroniza campo de busca se a URL mudar externamente (ex: reset de filtros)
-  useEffect(() => {
-    setLocalSearch(filters.search);
-  }, [filters.search]);
-
-  // Aliases para compatibilidade com o código existente
-  const searchTerm = localSearch;
-  const setSearchTerm = setLocalSearch;
-  const statusFilter = filters.status || "all";
-  const setStatusFilter = (v: string) => setFilters({ status: v === "all" ? "" : v });
-  const projectFilter = filters.projectId || "all";
-  const setProjectFilter = (v: string) => setFilters({ projectId: v === "all" ? "" : v });
-  const origemFilter = filters.origem || "all";
-  const setOrigemFilter = (v: string) => setFilters({ origem: v === "all" ? "" : v });
-  const corretorFilter = filters.corretorId || "all";
-  const setCorretorFilter = (v: string) => setFilters({ corretorId: v === "all" ? "" : v });
-  const temperaturaFilter = filters.temperatura || "all";
-  const setTemperaturaFilter = (v: string) => setFilters({ temperatura: v === "all" ? "" : v });
-  const dateRangePreset = (filters.datePreset || "all") as DateRangePreset;
-  const currentPage = filters.page;
-  const setCurrentPage = (p: number) => setFilters({ page: p });
-  const viewMode = filters.view;
-  const setViewMode = (v: "cards" | "table") => setFilters({ view: v });
-
-  // Custom date range (não persistido em URL — edge case)
+  // Estado de paginação
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(50);
+  
+  // Estados de filtros
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [projectFilter, setProjectFilter] = useState<string>("all");
+  const [origemFilter, setOrigemFilter] = useState<string>("all");
+  const [corretorFilter, setCorretorFilter] = useState<string>("all");
+  const [temperaturaFilter, setTemperaturaFilter] = useState<string>("all"); // Fase 2
+  const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>("all");
   const [customDateStart, setCustomDateStart] = useState<Date | undefined>();
   const [customDateEnd, setCustomDateEnd] = useState<Date | undefined>();
-  const setDateRangePreset = (v: DateRangePreset) => setFilters({ datePreset: v === "all" ? "" : v, page: 1 });
-
+  
   // Calcular datas baseado no preset
   const { dataInicio: dataInicioFilter, dataFim: dataFimFilter } = getDateRangeFromPreset(
     dateRangePreset,
     customDateStart,
     customDateEnd
   );
-
-  const debouncedSearch = filters.search;
+  
+  // Debounce para busca (evita queries excessivas)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
   
   // Query com filtros server-side (usa debouncedSearch)
   const { data: leadsData, isLoading, refetch } = trpc.leads.list.useQuery({ 
@@ -229,7 +208,8 @@ export default function Leads() {
   }, [leads]);
   const [interactionDialog, setInteractionDialog] = useState(false);
   const [atribuirDialog, setAtribuirDialog] = useState(false);
-
+  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
+  
   // Estados para seleção múltipla
   const [selectedLeadIds, setSelectedLeadIds] = useState<number[]>([]);
   const [transferirEmLoteDialog, setTransferirEmLoteDialog] = useState(false);
@@ -609,6 +589,11 @@ export default function Leads() {
     }
   };
 
+  // Resetar para página 1 quando filtros mudarem
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, statusFilter, projectFilter, origemFilter]);
+  
   // Usar leads diretamente do backend (já filtrados)
   const filteredLeads = leads;
 
@@ -835,7 +820,7 @@ export default function Leads() {
               ].map(pill => (
                 <button
                   key={pill.value}
-                  onClick={() => setStatusFilter(pill.value)}
+                  onClick={() => { setStatusFilter(pill.value); setCurrentPage(1); }}
                   className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
                     statusFilter === pill.value
                       ? 'bg-primary text-primary-foreground border-primary'
@@ -883,7 +868,7 @@ export default function Leads() {
                 )}
                 <div className="space-y-1">
                   <Label className="text-xs">Temperatura</Label>
-                  <Select value={temperaturaFilter} onValueChange={setTemperaturaFilter}>
+                  <Select value={temperaturaFilter} onValueChange={(v) => { setTemperaturaFilter(v); setCurrentPage(1); }}>
                     <SelectTrigger className="h-8 text-xs">
                       <SelectValue placeholder="Todas" />
                     </SelectTrigger>
@@ -928,7 +913,7 @@ export default function Leads() {
             return (
               <button
                 key={status}
-                onClick={() => setStatusFilter(isActive ? 'all' : status)}
+                onClick={() => { setStatusFilter(isActive ? 'all' : status); setCurrentPage(1); }}
                 className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all ${
                   isActive ? `${bg} ${color} ring-2 ring-offset-1 ring-current` : 'bg-card border-border hover:border-primary/30 hover:bg-muted/50'
                 }`}
@@ -999,14 +984,20 @@ export default function Leads() {
                                 {lead.corretorNome}
                               </Badge>
                             )}
-                            {lead.temperatura && (
-                              <LeadTemperatureBadge
-                                temperature={
-                                  lead.temperatura === 'quente' ? 'hot' :
-                                  lead.temperatura === 'frio' ? 'cold' : 'warm'
-                                }
-                                showLabel
-                              />
+                            {lead.temperatura === 'quente' && (
+                              <Badge className="bg-red-100 text-red-700 border border-red-300 flex items-center gap-1">
+                                <Flame className="h-3 w-3" /> Quente
+                              </Badge>
+                            )}
+                            {lead.temperatura === 'morno' && (
+                              <Badge className="bg-orange-100 text-orange-700 border border-orange-300 flex items-center gap-1">
+                                <Thermometer className="h-3 w-3" /> Morno
+                              </Badge>
+                            )}
+                            {lead.temperatura === 'frio' && (
+                              <Badge className="bg-blue-100 text-blue-700 border border-blue-300 flex items-center gap-1">
+                                <Snowflake className="h-3 w-3" /> Frio
+                              </Badge>
                             )}
                             {lead.origemWebhook && (
                               <Badge className="bg-red-600 hover:bg-red-700 text-white">
@@ -1043,11 +1034,6 @@ export default function Leads() {
                       </div>
                     </CardHeader>
                     <CardContent>
-                      {/* SLA progress bar — verde/âmbar/vermelho conforme tempo no status */}
-                      {(() => {
-                        const hoursInStatus = (Date.now() - new Date(lead.updatedAt).getTime()) / 3_600_000;
-                        return <SLAProgressBar status={lead.status} hoursInStatus={hoursInStatus} showLabel className="mb-3" />;
-                      })()}
                       <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
                           {/* Melhoria 8: Telefone com botão copiar */}
@@ -1270,12 +1256,12 @@ export default function Leads() {
                     const estaParado = diasParado !== null && diasParado >= 3;
 
                     return (
-                      <TableRow key={lead.id} className={`group ${
+                      <TableRow key={lead.id} className={
                         lead.origemWebhook ? 'bg-red-50/30' :
                         estaParado && diasParado! >= 15 ? 'bg-red-50/20 dark:bg-red-950/10' :
                         estaParado && diasParado! >= 7  ? 'bg-orange-50/20 dark:bg-orange-950/10' :
                         estaParado ? 'bg-yellow-50/20 dark:bg-yellow-950/10' : ''
-                      }`}>
+                      }>
                         {isGestor && (
                           <TableCell>
                             <input
@@ -1294,37 +1280,13 @@ export default function Leads() {
                           </TableCell>
                         )}
                         <TableCell className="font-medium">
-                          <div className="flex flex-col gap-0.5">
-                            <div className="flex items-center gap-2">
-                              {lead.nome}
-                              {lead.origemWebhook && (
-                                <Badge className="bg-red-600 hover:bg-red-700 text-white text-xs">
-                                  🔥 ADS
-                                </Badge>
-                              )}
-                              {/* SLA indicator */}
-                              {(() => {
-                                const sla = getSlaStatus(lead.ultimaInteracao || lead.updatedAt);
-                                const score = calcLeadScore({ status: lead.status, temperatura: lead.temperatura, updatedAt: lead.ultimaInteracao || lead.updatedAt });
-                                if (sla === 'critical') return <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" title="SLA crítico (>48h)" />;
-                                if (sla === 'warning') return <span className="inline-block w-2 h-2 rounded-full bg-yellow-400" title="SLA atenção (24-48h)" />;
-                                return null;
-                              })()}
-                            </div>
-                            {/* Quick actions on hover */}
-                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              {lead.telefone && (
-                                <>
-                                  <a href={`tel:${lead.telefone}`} onClick={(e) => e.stopPropagation()} className="text-xs text-muted-foreground hover:text-green-700 flex items-center gap-0.5 transition-colors" title="Ligar">
-                                    <Phone className="h-3 w-3" /> Ligar
-                                  </a>
-                                  <span className="text-muted-foreground/40">·</span>
-                                  <a href={`https://wa.me/55${lead.telefone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs text-muted-foreground hover:text-green-700 flex items-center gap-0.5 transition-colors" title="WhatsApp">
-                                    <MessageCircle className="h-3 w-3" /> WA
-                                  </a>
-                                </>
-                              )}
-                            </div>
+                          <div className="flex items-center gap-2">
+                            {lead.nome}
+                            {lead.origemWebhook && (
+                              <Badge className="bg-red-600 hover:bg-red-700 text-white text-xs">
+                                🔥 ADS
+                              </Badge>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>

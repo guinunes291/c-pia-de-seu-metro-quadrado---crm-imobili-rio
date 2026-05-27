@@ -110,7 +110,6 @@ export const carteiraAtivaRouter = router({
         leadTelefone: leads.telefone,
         leadEmail: leads.email,
         leadStatus: leads.status,
-        leadUpdatedAt: leads.updatedAt,
         leadProjeto: leads.projetoCustom,
         leadOrigem: leads.origem,
       })

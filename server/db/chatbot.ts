@@ -11,8 +11,5 @@ export {
   addMensagemChatbot,
   getFaqsChatbot,
   createFaqChatbot,
-  updateFaqChatbot,
-  deleteFaqChatbot,
-  searchFaqChatbot,
   converterConversaEmLead,
 } from "../db";

@@ -4,57 +4,16 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertTriangle, Clock, Calendar, CreditCard, UserX, Phone,
-  RefreshCw, ChevronDown, ChevronUp, MessageCircle, ExternalLink,
+  RefreshCw, ChevronDown, ChevronUp,
 } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { gerarLinkWhatsApp } from "@/lib/whatsapp";
 
 function formatTempo(data: Date | string) {
   return formatDistanceToNow(new Date(data), { locale: ptBR, addSuffix: true });
-}
-
-function AcoesRapidas({ telefone, nome, leadId }: { telefone?: string; nome?: string; leadId?: number }) {
-  const [, navigate] = useLocation();
-  return (
-    <div className="flex items-center gap-1 shrink-0">
-      {telefone && (
-        <>
-          <a
-            href={`tel:${telefone}`}
-            onClick={(e) => e.stopPropagation()}
-            title="Ligar"
-            className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-          >
-            <Phone className="h-3.5 w-3.5" />
-          </a>
-          <a
-            href={gerarLinkWhatsApp(telefone, nome)}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            title="WhatsApp"
-            className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors text-muted-foreground hover:text-green-600"
-          >
-            <MessageCircle className="h-3.5 w-3.5" />
-          </a>
-        </>
-      )}
-      {leadId && (
-        <button
-          onClick={() => navigate(`/leads?id=${leadId}`)}
-          title="Ver lead"
-          className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-primary"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </button>
-      )}
-    </div>
-  );
 }
 
 type AlertaSecao = {
@@ -98,11 +57,11 @@ export default function CentralAlertas() {
         items: data.leadsSemPrimeiroContato,
         renderItem: (item: any) => (
           <div key={item.id} className="flex items-center justify-between gap-2 py-2 border-b last:border-0">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium truncate">{item.nome}</p>
-              <p className="text-xs text-muted-foreground">{item.corretorNome ?? "Sem corretor"} · <span className="text-red-600 dark:text-red-400">{formatTempo(item.createdAt)}</span></p>
+            <div>
+              <p className="text-sm font-medium">{item.nome}</p>
+              <p className="text-xs text-muted-foreground">{item.telefone} · {item.corretorNome ?? "Sem corretor"}</p>
             </div>
-            <AcoesRapidas telefone={item.telefone} nome={item.nome} leadId={item.id} />
+            <span className="text-xs text-red-600 dark:text-red-400 whitespace-nowrap">{formatTempo(item.createdAt)}</span>
           </div>
         ),
       },
@@ -117,11 +76,11 @@ export default function CentralAlertas() {
         items: data.followUpsVencidos,
         renderItem: (item: any) => (
           <div key={item.id} className="flex items-center justify-between gap-2 py-2 border-b last:border-0">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium truncate">{item.leadNome}</p>
-              <p className="text-xs text-muted-foreground">{item.corretorNome ?? "Sem corretor"} · <span className="text-orange-600 dark:text-orange-400">{formatTempo(item.dataFollowUp)}</span></p>
+            <div>
+              <p className="text-sm font-medium">{item.leadNome}</p>
+              <p className="text-xs text-muted-foreground">{item.leadTelefone} · {item.corretorNome ?? "Sem corretor"}</p>
             </div>
-            <AcoesRapidas telefone={item.leadTelefone} nome={item.leadNome} leadId={item.leadId} />
+            <span className="text-xs text-orange-600 dark:text-orange-400 whitespace-nowrap">{formatTempo(item.dataFollowUp)}</span>
           </div>
         ),
       },
@@ -136,11 +95,11 @@ export default function CentralAlertas() {
         items: data.agendamentosSemConfirmacao,
         renderItem: (item: any) => (
           <div key={item.id} className="flex items-center justify-between gap-2 py-2 border-b last:border-0">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium truncate">{item.leadNome}</p>
-              <p className="text-xs text-muted-foreground">{item.corretorNome ?? "Sem corretor"} · <span className="text-yellow-600 dark:text-yellow-400">{item.horaAgendamento}</span></p>
+            <div>
+              <p className="text-sm font-medium">{item.leadNome}</p>
+              <p className="text-xs text-muted-foreground">{item.corretorNome ?? "Sem corretor"}</p>
             </div>
-            <AcoesRapidas telefone={item.leadTelefone} nome={item.leadNome} leadId={item.leadId} />
+            <span className="text-xs text-yellow-600 dark:text-yellow-400 whitespace-nowrap">{item.horaAgendamento}</span>
           </div>
         ),
       },
@@ -155,11 +114,11 @@ export default function CentralAlertas() {
         items: data.analisesSemRetorno,
         renderItem: (item: any) => (
           <div key={item.id} className="flex items-center justify-between gap-2 py-2 border-b last:border-0">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium truncate">{item.leadNome}</p>
-              <p className="text-xs text-muted-foreground">{item.corretorNome ?? "Sem corretor"} · <span className="text-blue-600 dark:text-blue-400">{formatTempo(item.createdAt)}</span></p>
+            <div>
+              <p className="text-sm font-medium">{item.leadNome}</p>
+              <p className="text-xs text-muted-foreground">{item.corretorNome ?? "Sem corretor"}</p>
             </div>
-            <AcoesRapidas telefone={item.leadTelefone} nome={item.leadNome} leadId={item.leadId} />
+            <span className="text-xs text-blue-600 dark:text-blue-400 whitespace-nowrap">{formatTempo(item.createdAt)}</span>
           </div>
         ),
       },
@@ -214,27 +173,7 @@ export default function CentralAlertas() {
         </div>
 
         {isLoading && (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <Card key={i}>
-                <CardHeader className="py-3 px-4">
-                  <Skeleton className="h-5 w-48" />
-                  <Skeleton className="h-3 w-72 mt-1" />
-                </CardHeader>
-                <CardContent className="px-4 py-2 space-y-3">
-                  {[1, 2].map((j) => (
-                    <div key={j} className="flex items-center justify-between py-2 border-b last:border-0">
-                      <div className="space-y-1">
-                        <Skeleton className="h-4 w-36" />
-                        <Skeleton className="h-3 w-24" />
-                      </div>
-                      <Skeleton className="h-7 w-20" />
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <div className="text-center py-12 text-muted-foreground">Carregando alertas...</div>
         )}
 
         {!isLoading && totalAlertas === 0 && (

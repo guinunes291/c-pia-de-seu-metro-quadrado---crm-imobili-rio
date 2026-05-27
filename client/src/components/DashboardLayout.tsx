@@ -37,8 +37,7 @@ import {
   UserCheck, UserX, Circle, Trash2, ChevronDown, Tv, FolderOpen,
   UserCog, Import, Home, Clock, CalendarCheck, Sun, Moon, Calendar,
   FileText, MessageCircle, Link2, Activity, Lock, ArrowRightLeft, Database, Trash,
-  Shield, Briefcase, Calculator, Phone, DollarSign, Zap, AlertTriangle, Bot,
-  Megaphone, ExternalLink
+  Shield, Briefcase, Calculator, Phone, DollarSign, Zap, AlertTriangle, Bot
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
@@ -56,7 +55,6 @@ import { ContadorLeadsFacebook } from "@/components/ContadorLeadsFacebook";
 import { useSolicitarPermissaoNotificacao } from "@/hooks/useNotificacaoLead";
 import { PushNotificationBanner } from "@/components/PushNotificationBanner";
 import { useLeadEvents } from "@/hooks/useLeadEvents";
-import { CommandPalette } from "@/components/layout/CommandPalette";
 
 // Estrutura de menu agrupado
 const menuGroups = [
@@ -78,7 +76,7 @@ const menuGroups = [
       { icon: Users, label: "Meus Leads", path: "/leads" },
       { icon: Shield, label: "Carteira Ativa", path: "/carteira-ativa" },
       { icon: Kanban, label: "Kanban", path: "/kanban" },
-      { icon: CalendarCheck, label: "Agendamentos", path: "/agendamentos", showAgendBadge: true },
+      { icon: CalendarCheck, label: "Agendamentos", path: "/agendamentos" },
       { icon: Calendar, label: "Minha Agenda", path: "/minha-agenda", roles: ["corretor"] },
       { icon: FileText, label: "Propostas", path: "/propostas" },
       { icon: Users, label: "Leads por Corretor", path: "/leads-por-corretor", roles: ["gestor", "admin", "superintendente"] },
@@ -86,8 +84,6 @@ const menuGroups = [
       { icon: Bell, label: "Notificações", path: "/notificacoes", roles: ["user", "corretor"], showBadge: true },
       { icon: Zap, label: "Modo Blitz", path: "/modo-blitz", roles: ["corretor"] },
       { icon: BookOpen, label: "Scripts de Vendas", path: "/scripts" },
-      { icon: Megaphone, label: "Oferta Ativa", path: "/oferta-ativa" },
-      { icon: ExternalLink, label: "Links Úteis", path: "/links-uteis" },
     ],
   },
   {
@@ -168,7 +164,6 @@ const menuGroups = [
       { icon: Trash, label: "Limpar Projetos Órfãos", path: "/limpar-projetos", roles: ["admin"] },
       { icon: Settings, label: "Configurações", path: "/configuracoes" },
       { icon: FileText, label: "Log de Transferências", path: "/log-transferencias", roles: ["admin"] },
-      { icon: MessageCircle, label: "FAQ do Chatbot", path: "/gerenciar-faq", roles: ["gestor", "admin", "superintendente"] },
     ],
   },
 ];
@@ -190,12 +185,10 @@ const menuGroupsCorretor = [
     icon: Users,
     items: [
       { icon: Users, label: "Meus Leads", path: "/leads", showLeadsBadge: true },
-      { icon: CalendarCheck, label: "Agendamentos", path: "/agendamentos", showAgendBadge: true },
+      { icon: CalendarCheck, label: "Agendamentos", path: "/agendamentos" },
       { icon: Calendar, label: "Minha Agenda", path: "/minha-agenda" },
       { icon: FileText, label: "Propostas", path: "/propostas" },
       { icon: BookOpen, label: "Scripts de Vendas", path: "/scripts" },
-      { icon: Megaphone, label: "Oferta Ativa", path: "/oferta-ativa" },
-      { icon: ExternalLink, label: "Links Úteis", path: "/links-uteis", requireLinksUteis: true },
     ],
   },
   {
@@ -250,8 +243,6 @@ const menuGroupsGestor = [
       { icon: Users, label: "Todos os Leads", path: "/leads" },
       { icon: CalendarCheck, label: "Agendamentos", path: "/agendamentos" },
       { icon: BookOpen, label: "Scripts de Vendas", path: "/scripts" },
-      { icon: Megaphone, label: "Oferta Ativa", path: "/oferta-ativa" },
-      { icon: ExternalLink, label: "Links Úteis", path: "/links-uteis" },
     ],
   },
   {
@@ -275,14 +266,10 @@ const menuGroupsGestor = [
       { icon: FileText, label: "Tabelões", path: "/gerenciar-tabeloes" },
       { icon: UserCheck, label: "Aprovar Projetos", path: "/aprovar-projetos" },
       { icon: Settings, label: "Configurações", path: "/configuracoes" },
-            { icon: MessageCircle, label: "FAQ do Chatbot", path: "/gerenciar-faq" },
-      { icon: Megaphone, label: "Oferta Ativa", path: "/oferta-ativa" },
-      { icon: Megaphone, label: "Sessões de Oferta", path: "/sessoes-oferta" },
-      { icon: ExternalLink, label: "Links Úteis", path: "/links-uteis" },
-      { icon: Settings, label: "Gerenciar Links", path: "/gerenciar-links-uteis" },
     ],
   },
 ];
+
 // Menu para admin e superintendente — 5 grupos, ~18 itens
 const menuGroupsAdmin = [
   {
@@ -347,14 +334,10 @@ const menuGroupsAdmin = [
       { icon: Settings, label: "Templates Comissão", path: "/templates-comissao" },
       { icon: Trash2, label: "Lixeira", path: "/lixeira" },
       { icon: Settings, label: "Configurações", path: "/configuracoes" },
-            { icon: MessageCircle, label: "FAQ do Chatbot", path: "/gerenciar-faq" },
-      { icon: Megaphone, label: "Oferta Ativa", path: "/oferta-ativa" },
-      { icon: Megaphone, label: "Sessões de Oferta", path: "/sessoes-oferta" },
-      { icon: ExternalLink, label: "Links Úteis", path: "/links-uteis" },
-      { icon: Settings, label: "Gerenciar Links", path: "/gerenciar-links-uteis" },
     ],
   },
 ];
+
 // Menu para superintendente — visão da equipe, sem distribuição ou sistema
 // Hierarquia: ADMIN → SUPT → Gestores → Corretores
 const menuGroupsSuperintendente = [
@@ -534,14 +517,6 @@ function AlertasBadge({ count }: { count: number }) {
     </span>
   );
 }
-function AgendBadge({ count }: { count: number }) {
-  if (count === 0) return null;
-  return (
-    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-cyan-500 text-[10px] font-medium text-white">
-      {count > 9 ? '9+' : count}
-    </span>
-  );
-}
 
 function DashboardContent({
   children,
@@ -568,11 +543,11 @@ function DashboardContent({
   const perfilIncompleto = verificacaoOnboarding && !verificacaoOnboarding.completo && verificacaoOnboarding.user?.role !== 'admin' && verificacaoOnboarding.user?.role !== 'superintendente';
 
   // Leads prioritários para badge, banner e modal agenda
-  // SSE invalida a query instantaneamente; 30s é apenas fallback para quando a conexão cai
+  // SSE invalida a query instantaneamente; 2min é fallback para quando a conexão cai (reduzido de 30s — economia de Cloud)
   const { data: leadsPrioritarios } = trpc.dashboard.leadsPrioritarios.useQuery(undefined, {
     enabled: user?.role === 'corretor',
-    refetchInterval: 30 * 1000,
-    staleTime: 0,
+    refetchInterval: 2 * 60 * 1000, // 2 minutos
+    staleTime: 30 * 1000,
   });
   const totalAcoesLeads = (leadsPrioritarios?.followUpsVencidos?.length ?? 0) +
     (leadsPrioritarios?.leadsQuentes?.length ?? 0) +
@@ -770,8 +745,8 @@ function DashboardContent({
   const isGestorOuSuperior = user?.role === 'gestor' || user?.role === 'admin' || user?.role === 'superintendente';
   const { data: alertasGestor } = trpc.alertasGestor.lista.useQuery(undefined, {
     enabled: isGestorOuSuperior,
-    refetchInterval: 3 * 60 * 1000,
-    staleTime: 2 * 60 * 1000,
+    refetchInterval: 10 * 60 * 1000, // 10 minutos (reduzido de 3min — economia de Cloud)
+    staleTime: 5 * 60 * 1000,
   });
   const totalAlertasEquipe = isGestorOuSuperior ? (
     (alertasGestor?.followUpsVencidos?.length ?? 0) +
@@ -802,17 +777,14 @@ function DashboardContent({
     : user?.role === 'superintendente'
     ? menuGroupsSuperintendente
     : menuGroups;
-  const isItemVisible = (item: any) => {
-    if (item.roles && !item.roles.includes(user?.role || "")) return false;
-    if (item.requireLinksUteis && !(user as any)?.acessaLinksUteis) return false;
-    return true;
-  };
-
   const filteredGroups = activeMenuGroups.filter(group => {
     if ((group as any).roles && !(group as any).roles.includes(user?.role || "")) {
       return false;
     }
-    const visibleItems = group.items.filter(isItemVisible);
+    // Verificar se há pelo menos um item visível no grupo
+    const visibleItems = group.items.filter(item =>
+      !(item as any).roles || (item as any).roles.includes(user?.role || "")
+    );
     return visibleItems.length > 0;
   });
 
@@ -831,28 +803,16 @@ function DashboardContent({
       >
         <SidebarHeader className="p-3 border-b">
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="flex items-center gap-2">
               <img
                 src="https://files.manuscdn.com/user_upload_by_module/session_file/310419663032188321/nYdEnBpdRXDVWsgt.png"
                 alt="Seu Metro Quadrado"
-                className="h-8 w-8 object-contain flex-shrink-0"
+                className="h-8 w-8 object-contain"
               />
               {!isCollapsed && (
                 <span className="font-semibold text-foreground text-sm">Seu m²</span>
               )}
             </div>
-            {!isCollapsed && (
-              <button
-                onClick={() => {
-                  const event = new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true });
-                  window.dispatchEvent(event);
-                }}
-                title="Busca rápida (Ctrl+K)"
-                className="flex items-center gap-1 rounded-md border bg-muted/50 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted transition-colors flex-shrink-0"
-              >
-                <span>⌘K</span>
-              </button>
-            )}
           </div>
         </SidebarHeader>
 
@@ -917,7 +877,9 @@ function DashboardContent({
           {/* Menu Agrupado */}
           <div className="px-2 py-1 space-y-1">
             {filteredGroups.map((group) => {
-              const visibleItems = group.items.filter(isItemVisible);
+              const visibleItems = group.items.filter(item =>
+                !(item as any).roles || (item as any).roles.includes(user?.role || "")
+              );
               const hasActiveItem = visibleItems.some(item => location === item.path);
               const GroupIcon = group.icon;
 
@@ -940,7 +902,6 @@ function DashboardContent({
                               {(item as any).showBadge && <NotificationBadge />}
                               {(item as any).showLeadsBadge && isCorretor && <LeadsActionsBadge count={totalAcoesLeads} />}
                               {(item as any).showAlertasBadge && isGestorOuSuperior && <AlertasBadge count={totalAlertasEquipe} />}
-                              {(item as any).showAgendBadge && isCorretor && <AgendBadge count={agendamentosHojeCount} />}
                               {(item as any).showAlert && !desbloqueado && (
                                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -993,7 +954,6 @@ function DashboardContent({
                               {(item as any).showBadge && <NotificationBadge />}
                               {(item as any).showLeadsBadge && isCorretor && <LeadsActionsBadge count={totalAcoesLeads} />}
                               {(item as any).showAlertasBadge && isGestorOuSuperior && <AlertasBadge count={totalAlertasEquipe} />}
-                              {(item as any).showAgendBadge && isCorretor && <AgendBadge count={agendamentosHojeCount} />}
                               {(item as any).showAlert && !desbloqueado && (
                                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -1133,7 +1093,7 @@ function DashboardContent({
           </div>
           {/* Banner de lead aguardando primeiro contato */}
           {isCorretor && primeiroLeadAguardando && (
-            <div className="sticky top-0 z-[5] flex items-center justify-between gap-3 bg-red-600 px-4 py-2.5 text-white shadow-md">
+            <div className="sticky top-0 z-40 flex items-center justify-between gap-3 bg-red-600 px-4 py-2.5 text-white shadow-md">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-lg">🔥</span>
                 <div className="min-w-0">
@@ -1166,7 +1126,7 @@ function DashboardContent({
           {/* Overlay de bloqueio se não atingiu follow-ups E perfil está completo E não está em páginas liberadas (APENAS CORRETORES) */}
           {/* Quando perfil está incompleto, NÃO mostra overlay de follow-up para permitir acesso à página de configurações */}
           {/* Só mostra overlay se o corretor ACEITOU fazer follow-ups (escolhaDiariaFeita && aceitouFollowUp === true) */}
-          {isCorretor && !desbloqueado && !perfilIncompleto && escolhaDiariaFeita && aceitouFollowUp === true && location !== "/tarefas-do-dia" && location !== "/modo-blitz" && location !== "/configuracoes" && location !== "/dashboard" && location !== "/performance" && (
+          {isCorretor && !desbloqueado && !perfilIncompleto && escolhaDiariaFeita && aceitouFollowUp === true && location !== "/tarefas-do-dia" && location !== "/modo-blitz" && location !== "/configuracoes" && (
             <LockedTabOverlay
               total={total}
               concluidos={concluidos}
@@ -1208,9 +1168,6 @@ function DashboardContent({
 
       {/* Modal de onboarding obrigatório (1ª camada de bloqueio) */}
       <ModalOnboardingObrigatorio />
-
-      {/* Command Palette — Cmd+K / Ctrl+K */}
-      <CommandPalette />
     </>
   );
 }
