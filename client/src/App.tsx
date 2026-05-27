@@ -12,7 +12,7 @@ import { CorretorNotifications } from "./components/CorretorNotifications";
 
 // Páginas críticas — carregamento imediato (core do fluxo de vendas)
 import Home from "./pages/Home";
-import DashboardPage from "@/features/dashboard/DashboardPage";
+const DashboardPage = lazy(() => import("./pages/Dashboard"));
 
 // Páginas primárias — lazy loading para reduzir bundle inicial
 const PerformancePage = lazy(() => import("@/features/performance/PerformancePage"));
