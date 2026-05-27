@@ -1355,9 +1355,9 @@ export async function registrarTransicaoStatus(data: {
   await db.insert(leadHistory).values({
     leadId: data.leadId,
     corretorId: data.corretorId,
-    tipo: 'mudanca_status' as any,
+    tipo: 'outro' as any,
     resultado: 'outro' as any,
-    observacoes: data.observacao ?? '',
+    observacoes: `Mudança de status: ${data.statusAnterior} → ${data.statusNovo}${data.observacao ? ' — ' + data.observacao : ''}`,
     statusAnterior: data.statusAnterior,
     statusNovo: data.statusNovo,
   });
