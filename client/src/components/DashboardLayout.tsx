@@ -55,6 +55,7 @@ import { ContadorLeadsFacebook } from "@/components/ContadorLeadsFacebook";
 import { useSolicitarPermissaoNotificacao } from "@/hooks/useNotificacaoLead";
 import { PushNotificationBanner } from "@/components/PushNotificationBanner";
 import { useLeadEvents } from "@/hooks/useLeadEvents";
+import { CommandPalette } from "@/components/layout/CommandPalette";
 
 // Estrutura de menu agrupado
 const menuGroups = [
@@ -802,7 +803,7 @@ function DashboardContent({
         }
       >
         <SidebarHeader className="p-3 border-b">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <img
                 src="https://files.manuscdn.com/user_upload_by_module/session_file/310419663032188321/nYdEnBpdRXDVWsgt.png"
@@ -813,6 +814,15 @@ function DashboardContent({
                 <span className="font-semibold text-foreground text-sm">Seu m²</span>
               )}
             </div>
+            {!isCollapsed && (
+              <button
+                onClick={() => { const e = new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }); document.dispatchEvent(e); }}
+                className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-muted-foreground bg-muted/50 hover:bg-muted border border-border/50 transition-colors"
+                title="Abrir paleta de comandos (Cmd+K)"
+              >
+                <span>⌘K</span>
+              </button>
+            )}
           </div>
         </SidebarHeader>
 
@@ -1168,6 +1178,9 @@ function DashboardContent({
 
       {/* Modal de onboarding obrigatório (1ª camada de bloqueio) */}
       <ModalOnboardingObrigatorio />
+
+      {/* Command Palette — Cmd+K / Ctrl+K de qualquer lugar */}
+      <CommandPalette />
     </>
   );
 }

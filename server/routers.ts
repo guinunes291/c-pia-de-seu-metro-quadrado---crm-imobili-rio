@@ -499,6 +499,7 @@ export const appRouter = router({
           dataCredenciamento: z.coerce.date().nullable().optional(),
           dataDescredenciamento: z.coerce.date().nullable().optional(),
           situacao: z.enum(["ativo", "inativo"]).optional(),
+          acessaLinksUteis: z.boolean().optional(),
           // Endereço
           logradouro: z.string().optional(),
           numero: z.string().optional(),

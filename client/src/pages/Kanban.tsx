@@ -1,22 +1,24 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { normalizeSearch } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { gerarLinkWhatsApp } from "@/lib/whatsapp";
 import { useAuth } from "@/_core/hooks/useAuth";
 import DashboardLayout from "@/components/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Phone, Mail, GripVertical, MessageCircle, CheckCircle2, FileCheck, FileText, Search, X, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Loader2, Phone, Mail, GripVertical, MessageCircle, CheckCircle2, FileCheck, FileText, Search, X, RefreshCw, CalendarCheck } from "lucide-react";
+import { toast } from "sonner";
 import LeadTimer from "@/components/LeadTimer";
 import { TimerLead } from "@/components/TimerLead";
 import { ModalRegistrarVisita } from "@/components/ModalRegistrarVisita";
 import { ModalFecharContrato } from "@/components/ModalFecharContrato";
 import { ModalRegistrarAnaliseCredito } from "@/components/ModalRegistrarAnaliseCredito";
 
-// Definição das colunas do Kanban baseadas nos status do lead
 const KANBAN_COLUMNS = [
   { id: "novo", title: "Novos", color: "bg-blue-500" },
   { id: "aguardando_atendimento", title: "Aguardando", color: "bg-slate-500" },
@@ -42,11 +44,12 @@ type Lead = {
   corretorId: number | null;
 };
 
+const todayISO = () => new Date().toISOString().split("T")[0];
+
 export default function Kanban() {
   const { user } = useAuth();
   const utils = trpc.useUtils();
-  
-  // Kanban mostra apenas de "Em Atendimento" em diante (sem Novos e Aguardando)
+
   const visibleColumns = KANBAN_COLUMNS.filter(
     col => col.id !== 'novo' && col.id !== 'aguardando_atendimento'
   );
@@ -66,70 +69,98 @@ export default function Kanban() {
 
   const queriesByStatus: Record<string, typeof emAtendimento> = {
     em_atendimento: emAtendimento,
-    qualificado: qualificado,
-    agendado: agendado,
+    qualificado,
+    agendado,
     visita_realizada: visitaRealizada,
     proposta_enviada: propostaEnviada,
     analise_credito: analiseCredito,
     contrato_fechado: contratoFechado,
     pos_venda: posVenda,
-    perdido: perdido,
+    perdido,
   };
-  
+
   const isLoading = Object.values(queriesByStatus).some(q => q.isLoading);
-  
-  const refetchAll = () => {
-    utils.leads.list.invalidate();
-  };
-  
-  // Mutation para atualizar status do lead
-  const updateLead = trpc.leads.update.useMutation({
-    onSuccess: () => {
-      refetchAll(); // Recarrega todos os leads após atualização
-    },
+
+  const refetchAll = () => utils.leads.list.invalidate();
+
+  const updateLead = trpc.leads.update.useMutation({ onSuccess: refetchAll });
+
+  // ── Agendamento modal ──────────────────────────────────────────────────────
+  const [modalAgendarOpen, setModalAgendarOpen] = useState(false);
+  const [leadAgendarSelecionado, setLeadAgendarSelecionado] = useState<Lead | null>(null);
+  const [formAgendar, setFormAgendar] = useState({
+    dataAgendamento: todayISO(),
+    horaAgendamento: "10:00",
+    projetoCustom: "",
+    observacoes: "",
   });
 
-  // Estado para drag and drop
+  const criarAgendamento = trpc.agendamentos.agendamentos.create.useMutation({
+    onSuccess: () => {
+      const lead = leadAgendarSelecionado;
+      setModalAgendarOpen(false);
+      setLeadAgendarSelecionado(null);
+      setFormAgendar({ dataAgendamento: todayISO(), horaAgendamento: "10:00", projetoCustom: "", observacoes: "" });
+      refetchAll();
+      if (lead) {
+        const msg = `Oi ${lead.nome.split(" ")[0]}, confirmando sua visita para ${formAgendar.dataAgendamento.split("-").reverse().join("/")} às ${formAgendar.horaAgendamento}. Até lá! 🏠`;
+        const wpp = gerarLinkWhatsApp(lead.telefone, lead.nome, msg);
+        toast.success("Agendamento criado!", {
+          description: "Clique para enviar confirmação pelo WhatsApp",
+          action: { label: "WhatsApp", onClick: () => window.open(wpp, "_blank") },
+          duration: 8000,
+        });
+      }
+    },
+    onError: (err) => toast.error(err.message || "Erro ao criar agendamento"),
+  });
+
+  const openAgendarModal = (lead: Lead) => {
+    setLeadAgendarSelecionado(lead);
+    setFormAgendar({ dataAgendamento: todayISO(), horaAgendamento: "10:00", projetoCustom: "", observacoes: "" });
+    setModalAgendarOpen(true);
+  };
+
+  const handleSubmitAgendar = () => {
+    if (!leadAgendarSelecionado) return;
+    if (!formAgendar.dataAgendamento || !formAgendar.horaAgendamento) {
+      toast.error("Informe data e horário");
+      return;
+    }
+    criarAgendamento.mutate({
+      leadId: leadAgendarSelecionado.id,
+      dataAgendamento: formAgendar.dataAgendamento,
+      horaAgendamento: formAgendar.horaAgendamento,
+      projetoCustom: formAgendar.projetoCustom || undefined,
+      observacoes: formAgendar.observacoes || undefined,
+    });
+  };
+
+  // ── Outros modais ──────────────────────────────────────────────────────────
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
-  
-  // Estado do modal de registro de visita
   const [modalVisitaOpen, setModalVisitaOpen] = useState(false);
   const [leadSelecionado, setLeadSelecionado] = useState<Lead | null>(null);
-  
-  // Estado do modal de fechamento de contrato
   const [modalContratoOpen, setModalContratoOpen] = useState(false);
   const [leadContratoSelecionado, setLeadContratoSelecionado] = useState<Lead | null>(null);
-  
-  // Estado do modal de análise de crédito
   const [modalAnaliseOpen, setModalAnaliseOpen] = useState(false);
   const [leadAnaliseSelecionado, setLeadAnaliseSelecionado] = useState<Lead | null>(null);
-
-  // Estado de busca
   const [searchTerm, setSearchTerm] = useState("");
-  // Normaliza o termo de busca: remove acentos, cedilha, hífens, espaços
   const searchNorm = normalizeSearch(searchTerm);
 
-  // Agrupar leads por status usando as queries separadas
   const allLeadsByStatus = visibleColumns.reduce((acc, column) => {
-    const query = queriesByStatus[column.id];
-    acc[column.id] = (query?.data?.leads || []) as Lead[];
+    acc[column.id] = (queriesByStatus[column.id]?.data?.leads || []) as Lead[];
     return acc;
   }, {} as Record<string, Lead[]>);
 
-  // Filtrar leads pela busca normalizada (frontend — dados já carregados)
   const leadsByStatus = useMemo(() => {
     if (!searchNorm) return allLeadsByStatus;
     const matchesSearch = (lead: Lead) => {
-      // Busca por nome normalizado
       if (normalizeSearch(lead.nome).includes(searchNorm)) return true;
-      // Busca por telefone (apenas dígitos)
       const phoneDigits = (lead.telefone || "").replace(/\D/g, "");
       const searchDigits = searchNorm.replace(/\D/g, "");
       if (searchDigits.length >= 4 && phoneDigits.includes(searchDigits)) return true;
-      // Busca por nome do corretor normalizado
       if (normalizeSearch((lead as any).corretorNome).includes(searchNorm)) return true;
-      // Busca por e-mail normalizado
       if (normalizeSearch(lead.email).includes(searchNorm)) return true;
       return false;
     };
@@ -145,65 +176,41 @@ export default function Kanban() {
     [leadsByStatus]
   );
 
-  // Handlers de drag and drop
+  // ── Drag & Drop ────────────────────────────────────────────────────────────
   const handleDragStart = (e: React.DragEvent, lead: Lead) => {
     setDraggedLead(lead);
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", lead.id.toString());
   };
 
-  const handleDragEnd = () => {
-    setDraggedLead(null);
-    setDragOverColumn(null);
-  };
-
+  const handleDragEnd = () => { setDraggedLead(null); setDragOverColumn(null); };
   const handleDragOver = (e: React.DragEvent, columnId: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     setDragOverColumn(columnId);
   };
-
-  const handleDragLeave = () => {
-    setDragOverColumn(null);
-  };
+  const handleDragLeave = () => setDragOverColumn(null);
 
   const handleDrop = (e: React.DragEvent, newStatus: string) => {
     e.preventDefault();
     setDragOverColumn(null);
+    if (!draggedLead || draggedLead.status === newStatus) { setDraggedLead(null); return; }
 
-    if (draggedLead && draggedLead.status !== newStatus) {
-      // Verificar se o novo status exige dados adicionais
-      if (newStatus === "agendado") {
-        // Para agendado, impedir drag direto e mostrar toast
-        toast.info("Para agendar uma visita, use o botão 'Agendar Visita' no card do lead.");
-        setDraggedLead(null);
-        return;
-      } else if (newStatus === "visita_realizada") {
-        // Abrir modal de registro de visita
-        setLeadSelecionado(draggedLead);
-        setModalVisitaOpen(true);
-        setDraggedLead(null);
-        return;
-      } else if (newStatus === "analise_credito") {
-        // Abrir modal de registro de análise de crédito
-        setLeadAnaliseSelecionado(draggedLead);
-        setModalAnaliseOpen(true);
-        setDraggedLead(null);
-        return;
-      } else if (newStatus === "contrato_fechado") {
-        // Abrir modal de fechamento de contrato
-        setLeadContratoSelecionado(draggedLead);
-        setModalContratoOpen(true);
-        setDraggedLead(null);
-        return;
-      }
-
-      // Para outros status, atualizar diretamente
+    if (newStatus === "agendado") {
+      openAgendarModal(draggedLead);
+    } else if (newStatus === "visita_realizada") {
+      setLeadSelecionado(draggedLead);
+      setModalVisitaOpen(true);
+    } else if (newStatus === "analise_credito") {
+      setLeadAnaliseSelecionado(draggedLead);
+      setModalAnaliseOpen(true);
+    } else if (newStatus === "contrato_fechado") {
+      setLeadContratoSelecionado(draggedLead);
+      setModalContratoOpen(true);
+    } else {
       updateLead.mutate({
         id: draggedLead.id,
-        data: {
-          status: newStatus as "novo" | "aguardando_atendimento" | "em_atendimento" | "agendado" | "visita_realizada" | "analise_credito" | "contrato_fechado" | "perdido",
-        }
+        data: { status: newStatus as "novo" | "aguardando_atendimento" | "em_atendimento" | "agendado" | "visita_realizada" | "analise_credito" | "contrato_fechado" | "perdido" },
       });
     }
     setDraggedLead(null);
@@ -228,7 +235,7 @@ export default function Kanban() {
             <h1 className="text-3xl font-bold">Kanban de Leads</h1>
             <p className="text-muted-foreground mt-1">
               Arraste os leads entre as colunas para atualizar o status
-              {totalFound > 0 && !searchNorm && (
+              {!searchNorm && (
                 <span className="ml-2 font-medium text-foreground">
                   · {Object.values(allLeadsByStatus).flat().length} leads no quadro
                 </span>
@@ -236,37 +243,29 @@ export default function Kanban() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={refetchAll}
-              title="Atualizar dados"
-            >
+            <Button variant="outline" size="sm" onClick={refetchAll} title="Atualizar dados">
               <RefreshCw className="h-4 w-4" />
             </Button>
-            {/* Campo de busca */}
             <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              placeholder="Buscar por nome, telefone ou corretor..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-9"
-            />
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                aria-label="Limpar busca"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="Buscar por nome, telefone ou corretor..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 pr-9"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Resultado da busca */}
         {searchNorm && (
           <div className="text-sm">
             {totalFound === 0
@@ -288,7 +287,6 @@ export default function Kanban() {
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, column.id)}
             >
-              {/* Column Header */}
               <div className="p-3 border-b flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className={`w-3 h-3 rounded-full ${column.color}`} />
@@ -299,7 +297,6 @@ export default function Kanban() {
                 </Badge>
               </div>
 
-              {/* Column Content */}
               <div className="p-2 space-y-2 min-h-[400px] max-h-[calc(100vh-300px)] overflow-y-auto">
                 {leadsByStatus[column.id]?.map((lead: Lead) => (
                   <Card
@@ -316,7 +313,7 @@ export default function Kanban() {
                         <GripVertical className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="font-medium truncate">{lead.nome}</p>
-                          
+
                           {lead.telefone && (
                             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                               <Phone className="h-3 w-3" />
@@ -334,39 +331,37 @@ export default function Kanban() {
                               </Button>
                             </div>
                           )}
-                          
+
                           {lead.email && (
                             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                               <Mail className="h-3 w-3" />
                               <span className="truncate">{lead.email}</span>
                             </div>
                           )}
-                          
-                          {(user?.role === 'gestor' || user?.role === 'admin' || user?.role === 'superintendente') && lead.corretorNome && (
+
+                          {(user?.role === 'gestor' || user?.role === 'admin' || user?.role === 'superintendente') && (lead as any).corretorNome && (
                             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                               <span className="font-medium">Corretor:</span>
-                              <span className="truncate">{lead.corretorNome}</span>
+                              <span className="truncate">{(lead as any).corretorNome}</span>
                             </div>
                           )}
-                          
-                          {lead.faixaRenda && (
+
+                          {(lead as any).faixaRenda && (
                             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                               <span className="font-medium">Renda:</span>
-                              <span className="truncate">{lead.faixaRenda}</span>
+                              <span className="truncate">{(lead as any).faixaRenda}</span>
                             </div>
                           )}
 
                           <div className="flex items-center justify-between mt-2">
                             {lead.origem && (
-                              <Badge variant="outline" className="text-xs">
-                                {lead.origem}
-                              </Badge>
+                              <Badge variant="outline" className="text-xs">{lead.origem}</Badge>
                             )}
                             <div className="flex flex-col gap-1 items-end w-full">
                               <LeadTimer createdAt={lead.createdAt} status={lead.status} compact showIcon />
-                              <TimerLead 
-                                timestampRecebimento={lead.timestampRecebimento} 
-                                timerAtivo={lead.timerAtivo ?? false}
+                              <TimerLead
+                                timestampRecebimento={(lead as any).timestampRecebimento}
+                                timerAtivo={(lead as any).timerAtivo ?? false}
                                 origem={lead.origem}
                                 nomeCliente={lead.nome}
                                 leadId={lead.id}
@@ -376,53 +371,54 @@ export default function Kanban() {
                               />
                             </div>
                           </div>
-                          
-                          <div className="mt-2 space-y-2">
-                            {/* Botão Registrar Visita apenas para leads agendados */}
+
+                          <div className="mt-2 space-y-1">
+                            {/* Agendar Visita — em_atendimento e qualificado */}
+                            {(column.id === 'em_atendimento' || column.id === 'qualificado') && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full h-7 text-xs bg-cyan-50 hover:bg-cyan-100 border-cyan-300 text-cyan-700"
+                                onClick={(e) => { e.stopPropagation(); openAgendarModal(lead); }}
+                              >
+                                <CalendarCheck className="h-3 w-3 mr-1" />
+                                Agendar Visita
+                              </Button>
+                            )}
+
+                            {/* Registrar Visita — agendado */}
                             {column.id === 'agendado' && (
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="w-full mt-2 h-7 text-xs bg-orange-50 hover:bg-orange-100 border-orange-300 text-orange-700"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setLeadSelecionado(lead);
-                                  setModalVisitaOpen(true);
-                                }}
+                                className="w-full h-7 text-xs bg-orange-50 hover:bg-orange-100 border-orange-300 text-orange-700"
+                                onClick={(e) => { e.stopPropagation(); setLeadSelecionado(lead); setModalVisitaOpen(true); }}
                               >
                                 <CheckCircle2 className="h-3 w-3 mr-1" />
                                 Registrar Visita
                               </Button>
                             )}
-                            
-                            {/* Botão Registrar Análise para leads em visita realizada */}
+
+                            {/* Registrar Análise — visita_realizada */}
                             {column.id === 'visita_realizada' && (
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="w-full mt-2 h-7 text-xs bg-purple-50 hover:bg-purple-100 border-purple-300 text-purple-700"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setLeadAnaliseSelecionado(lead);
-                                  setModalAnaliseOpen(true);
-                                }}
+                                className="w-full h-7 text-xs bg-purple-50 hover:bg-purple-100 border-purple-300 text-purple-700"
+                                onClick={(e) => { e.stopPropagation(); setLeadAnaliseSelecionado(lead); setModalAnaliseOpen(true); }}
                               >
                                 <FileText className="h-3 w-3 mr-1" />
                                 Registrar Análise
                               </Button>
                             )}
-                            
-                            {/* Botão Fechar Contrato para leads em análise de crédito */}
+
+                            {/* Fechar Contrato — analise_credito */}
                             {column.id === 'analise_credito' && (
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="w-full mt-2 h-7 text-xs bg-green-50 hover:bg-green-100 border-green-300 text-green-700"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setLeadContratoSelecionado(lead);
-                                  setModalContratoOpen(true);
-                                }}
+                                className="w-full h-7 text-xs bg-green-50 hover:bg-green-100 border-green-300 text-green-700"
+                                onClick={(e) => { e.stopPropagation(); setLeadContratoSelecionado(lead); setModalContratoOpen(true); }}
                               >
                                 <FileCheck className="h-3 w-3 mr-1" />
                                 Fechar Contrato
@@ -435,7 +431,6 @@ export default function Kanban() {
                   </Card>
                 ))}
 
-                {/* Empty state */}
                 {(!leadsByStatus[column.id] || leadsByStatus[column.id].length === 0) && (
                   <div className="flex items-center justify-center h-24 text-muted-foreground text-sm border-2 border-dashed rounded-lg">
                     Nenhum lead
@@ -446,7 +441,6 @@ export default function Kanban() {
           ))}
         </div>
 
-        {/* Loading indicator for status update */}
         {updateLead.isPending && (
           <div className="fixed bottom-4 right-4 bg-primary text-primary-foreground px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -454,7 +448,79 @@ export default function Kanban() {
           </div>
         )}
       </div>
-      
+
+      {/* ── Modal de Agendamento de Visita ────────────────────────────────── */}
+      <Dialog open={modalAgendarOpen} onOpenChange={(open) => { if (!open) { setModalAgendarOpen(false); setLeadAgendarSelecionado(null); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarCheck className="h-5 w-5 text-cyan-600" />
+              Agendar Visita
+            </DialogTitle>
+          </DialogHeader>
+          {leadAgendarSelecionado && (
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-muted-foreground">
+                Agendando visita para <strong>{leadAgendarSelecionado.nome}</strong>
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="data-agend">Data *</Label>
+                  <Input
+                    id="data-agend"
+                    type="date"
+                    value={formAgendar.dataAgendamento}
+                    min={todayISO()}
+                    onChange={(e) => setFormAgendar(f => ({ ...f, dataAgendamento: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hora-agend">Horário *</Label>
+                  <Input
+                    id="hora-agend"
+                    type="time"
+                    value={formAgendar.horaAgendamento}
+                    onChange={(e) => setFormAgendar(f => ({ ...f, horaAgendamento: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="projeto-agend">Projeto (opcional)</Label>
+                <Input
+                  id="projeto-agend"
+                  placeholder="Ex: Residencial Park Sul"
+                  value={formAgendar.projetoCustom}
+                  onChange={(e) => setFormAgendar(f => ({ ...f, projetoCustom: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="obs-agend">Observações (opcional)</Label>
+                <Textarea
+                  id="obs-agend"
+                  placeholder="Ponto de encontro, documentos necessários..."
+                  value={formAgendar.observacoes}
+                  onChange={(e) => setFormAgendar(f => ({ ...f, observacoes: e.target.value }))}
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setModalAgendarOpen(false); setLeadAgendarSelecionado(null); }}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSubmitAgendar}
+              disabled={criarAgendamento.isPending}
+              className="bg-cyan-600 hover:bg-cyan-700"
+            >
+              {criarAgendamento.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CalendarCheck className="h-4 w-4 mr-2" />}
+              Confirmar Agendamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Modal de Registro de Visita */}
       {leadSelecionado && (
         <ModalRegistrarVisita
@@ -462,12 +528,10 @@ export default function Kanban() {
           onOpenChange={setModalVisitaOpen}
           leadId={leadSelecionado.id}
           leadNome={leadSelecionado.nome}
-          onSuccess={() => {
-            refetchAll(); // Recarregar leads após registrar visita
-          }}
+          onSuccess={refetchAll}
         />
       )}
-      
+
       {/* Modal de Fechamento de Contrato */}
       {leadContratoSelecionado && (
         <ModalFecharContrato
@@ -475,12 +539,10 @@ export default function Kanban() {
           onClose={() => setModalContratoOpen(false)}
           leadId={leadContratoSelecionado.id}
           leadNome={leadContratoSelecionado.nome}
-          onSuccess={() => {
-            refetchAll(); // Recarregar leads após fechar contrato
-          }}
+          onSuccess={refetchAll}
         />
       )}
-      
+
       {/* Modal de Registro de Análise de Crédito */}
       {leadAnaliseSelecionado && (
         <ModalRegistrarAnaliseCredito
@@ -488,9 +550,7 @@ export default function Kanban() {
           onClose={() => setModalAnaliseOpen(false)}
           leadId={leadAnaliseSelecionado.id}
           leadNome={leadAnaliseSelecionado.nome}
-          onSuccess={() => {
-            refetchAll(); // Recarregar leads após registrar análise
-          }}
+          onSuccess={refetchAll}
         />
       )}
     </DashboardLayout>

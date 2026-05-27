@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { UserPlus, Edit, Trash2, UserCheck, UserX, Mail, Phone, Search, MapPin, Calendar, FileText, Eye, Copy, MessageCircle, Loader2, X, Users } from "lucide-react";
+import { UserPlus, Edit, Trash2, UserCheck, UserX, Mail, Phone, Search, MapPin, Calendar, FileText, Eye, Copy, MessageCircle, Loader2, X, Users, Link } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertDialog,
@@ -36,6 +37,7 @@ interface CorretorFormData {
   dataCredenciamento: string;
   dataDescredenciamento: string;
   situacao: "ativo" | "inativo";
+  acessaLinksUteis: boolean;
   // Endereço
   logradouro: string;
   numero: string;
@@ -57,6 +59,7 @@ const initialFormData: CorretorFormData = {
   dataCredenciamento: "",
   dataDescredenciamento: "",
   situacao: "ativo",
+  acessaLinksUteis: false,
   logradouro: "",
   numero: "",
   complemento: "",
@@ -170,7 +173,7 @@ export default function Corretores() {
       estado: formData.estado || undefined,
       cep: formData.cep || undefined,
     };
-    
+
     if (formData.dataNascimento) {
       payload.dataNascimento = new Date(formData.dataNascimento);
     }
@@ -197,6 +200,7 @@ export default function Corretores() {
       dataCredenciamento: formatDateForInput(corretor.dataCredenciamento),
       dataDescredenciamento: formatDateForInput(corretor.dataDescredenciamento),
       situacao: corretor.situacao || "ativo",
+      acessaLinksUteis: corretor.acessaLinksUteis ?? false,
       logradouro: corretor.logradouro || "",
       numero: corretor.numero || "",
       complemento: corretor.complemento || "",
@@ -231,8 +235,9 @@ export default function Corretores() {
       cidade: formData.cidade || undefined,
       estado: formData.estado || undefined,
       cep: formData.cep || undefined,
+      acessaLinksUteis: formData.acessaLinksUteis,
     };
-    
+
     if (formData.dataNascimento) {
       payload.dataNascimento = new Date(formData.dataNascimento);
     } else {
@@ -457,6 +462,22 @@ export default function Corretores() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="col-span-2 flex items-center justify-between rounded-lg border p-3">
+            <div className="space-y-0.5">
+              <Label className="flex items-center gap-2 cursor-pointer">
+                <Link className="h-4 w-4 text-blue-600" />
+                Acesso a Links Úteis
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Permite que o corretor acesse a seção de Links Úteis do sistema
+              </p>
+            </div>
+            <Switch
+              checked={formData.acessaLinksUteis}
+              onCheckedChange={(checked) => setFormData({ ...formData, acessaLinksUteis: checked })}
+            />
+          </div>
         </div>
       </TabsContent>
       
@@ -652,6 +673,12 @@ export default function Corretores() {
                               </>
                             )}
                           </Badge>
+                          {corretor.acessaLinksUteis && (
+                            <Badge variant="outline" className="border-blue-400 text-blue-600 text-xs">
+                              <Link className="mr-1 h-3 w-3" />
+                              Links Úteis
+                            </Badge>
+                          )}
                         </div>
 
                         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
