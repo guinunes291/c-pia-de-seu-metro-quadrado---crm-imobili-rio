@@ -49,6 +49,7 @@ import {
   carteiraTarefas,
   meuNegocioParametros,
   scriptsVendas, InsertScriptVendas, ScriptVendas,
+  historicoAtribuicoes,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { appendLead } from './googleSheetsSync';
@@ -8600,9 +8601,11 @@ export async function getProximoCorretorDisponivel(corretoresQueTentaram: number
     whereConditions = eq(users.role, 'corretor');
   }
   
+  // Ordenar por ID para garantir seleção determinística (evita retornar mesmo corretor em loops)
   const corretoresDisponiveis = await db.select()
     .from(users)
     .where(whereConditions)
+    .orderBy(asc(users.id))
     .limit(1);
   
   return corretoresDisponiveis[0] || null;

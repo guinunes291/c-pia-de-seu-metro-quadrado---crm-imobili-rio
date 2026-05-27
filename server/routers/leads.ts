@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../_core/trpc';
 import * as db from '../db';
-import { blitzSessoes } from '../../drizzle/schema';
+import { blitzSessoes, historicoAtribuicoes } from '../../drizzle/schema';
 import { desc, eq } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { sendPushNotification } from '../pushNotifications';
@@ -250,6 +250,25 @@ export const leadsRouter = router({
           corretoresQueTentaram.push(lead.corretorId);
         }
         console.log(`[updateLead] Corretores que já tentaram: ${JSON.stringify(corretoresQueTentaram)}`);
+
+        // Registrar no histórico de atribuições para que o job de redistribuição
+        // automática também respeite este corretor como "já tentou"
+        if (lead.corretorId) {
+          try {
+            const dbConn = await db.getDb();
+            if (dbConn) {
+              await dbConn.insert(historicoAtribuicoes).values({
+                leadId: input.id,
+                corretorId: lead.corretorId,
+                tipoAtribuicao: 'marcado_perdido',
+                dataAtribuicao: new Date(),
+                observacoes: `Corretor marcou o lead como perdido (status anterior: ${lead.status})`,
+              });
+            }
+          } catch (histErr) {
+            console.error('[updateLead] Erro ao registrar histórico de perdido:', histErr);
+          }
+        }
 
         const proximoCorretor = await db.getProximoCorretorDisponivel(corretoresQueTentaram);
         console.log(`[updateLead] Próximo corretor encontrado: ${proximoCorretor ? proximoCorretor.name : 'nenhum'}`);

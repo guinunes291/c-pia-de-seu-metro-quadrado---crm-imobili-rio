@@ -1815,7 +1815,8 @@ export const historicoAtribuicoes = mysqlTable("historico_atribuicoes", {
     "distribuicao_inicial",
     "redistribuicao_automatica",
     "redistribuicao_manual",
-    "transferencia_inatividade"
+    "transferencia_inatividade",
+    "marcado_perdido"
   ]).notNull(),
   
   // Metadata
