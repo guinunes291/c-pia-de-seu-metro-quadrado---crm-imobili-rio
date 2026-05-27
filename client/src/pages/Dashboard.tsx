@@ -8,8 +8,9 @@ import {
   Building2, Users, CheckCircle, TrendingUp, Clock, AlertCircle,
   Calendar, DollarSign, Eye, FileCheck, XCircle, Hourglass,
   CalendarDays, CalendarRange, BarChart3, TrendingDown, Download, Pencil, Plus, FileText,
-  ArrowLeftRight, RefreshCw, UserX, AlertTriangle, ArrowRight, Phone,
+  ArrowLeftRight, RefreshCw, UserX, AlertTriangle, ArrowRight, Phone, Trophy,
 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ExportCSVButton } from "@/components/ExportCSVButton";
 import EditarContratoDialog from "@/components/EditarContratoDialog";
 import { CriarContratoDialog } from '@/components/CriarContratoDialog';
@@ -134,6 +135,96 @@ function formatDateShort(dateStr: string): string {
   return format(date, "dd/MM", { locale: ptBR });
 }
 
+// ============================================================================
+// CorretorRankCard — card de ranking por métrica com barras de progresso
+// ============================================================================
+type CorretorRankCardProps<T> = {
+  title: string;
+  icon: React.ElementType;
+  iconClass: string;
+  total?: number | string;
+  items: T[] | undefined;
+  getValue: (item: T) => number;
+  getLabel: (item: T) => string;
+  isLoading?: boolean;
+  extraCol?: (item: T) => React.ReactNode;
+};
+
+function CorretorRankCard<T extends { id: number }>({
+  title, icon: Icon, iconClass, total, items, getValue, getLabel, isLoading, extraCol,
+}: CorretorRankCardProps<T>) {
+  const sorted = (items || []).slice().sort((a, b) => getValue(b) - getValue(a));
+  const max = sorted.length > 0 ? getValue(sorted[0]) : 1;
+
+  if (isLoading) {
+    return (
+      <Card className="flex flex-col">
+        <CardHeader className="pb-2">
+          <Skeleton className="h-5 w-32" />
+        </CardHeader>
+        <CardContent className="space-y-3 pt-2">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-7 w-full" />)}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="flex flex-col">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Icon className={`h-4 w-4 ${iconClass}`} />
+            {title}
+          </CardTitle>
+          {total !== undefined && (
+            <Badge variant="secondary" className="tabular-nums">{total}</Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="flex-1 overflow-hidden p-0">
+        {sorted.length > 0 ? (
+          <div className="overflow-y-auto max-h-72">
+            <div className="px-4 pb-3 space-y-2.5 pt-1">
+              {sorted.map((item, index) => {
+                const value = getValue(item);
+                const pct = max > 0 ? (value / max) * 100 : 0;
+                const rankClass =
+                  index === 0 ? 'text-yellow-500 font-black' :
+                  index === 1 ? 'text-slate-400 font-bold' :
+                  index === 2 ? 'text-amber-600 font-bold' :
+                  'text-muted-foreground';
+                return (
+                  <div key={item.id} className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`text-xs w-5 shrink-0 text-center ${rankClass}`}>{index + 1}</span>
+                        <span className="text-sm truncate">{getLabel(item)}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {extraCol && extraCol(item)}
+                        <span className="text-sm font-bold tabular-nums">{value}</span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted ml-7">
+                      <div
+                        className="h-1.5 rounded-full bg-primary/50 transition-all duration-500"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <p className="text-center text-muted-foreground py-6 text-sm">Sem dados no período</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const { user, loading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -214,6 +305,25 @@ export default function Dashboard() {
   const { data: allLeads } = trpc.leads.list.useQuery(undefined, {
     ...tier2, refetchInterval: 2 * 60 * 1000,
   });
+
+  // Pipeline por corretor — merge das 5 arrays por id para visão consolidada
+  const pipelinePorCorretor = useMemo(() => {
+    if (!metricasPorCorretor) return [];
+    type Row = { id: number; nome: string; leads: number; agendamentos: number; visitas: number; analise: number; contratos: number; vgv: number };
+    const map = new Map<number, Row>();
+    const ensure = (id: number, nome: string): Row => {
+      if (!map.has(id)) map.set(id, { id, nome, leads: 0, agendamentos: 0, visitas: 0, analise: 0, contratos: 0, vgv: 0 });
+      return map.get(id)!;
+    };
+    for (const item of metricasPorCorretor.leads ?? []) { ensure(item.id, item.nome).leads = item.totalLeads; }
+    for (const item of metricasPorCorretor.agendamentos ?? []) { ensure(item.id, item.nome).agendamentos = item.agendados; }
+    for (const item of metricasPorCorretor.visitas ?? []) { ensure(item.id, item.nome).visitas = item.visitas; }
+    for (const item of metricasPorCorretor.pastas ?? []) { ensure(item.id, item.nome).analise = item.pastas; }
+    for (const item of metricasPorCorretor.vendas ?? []) { const r = ensure(item.id, item.nome); r.contratos = item.vendas; r.vgv = item.vgv; }
+    return Array.from(map.values())
+      .filter(r => r.leads + r.agendamentos + r.visitas + r.analise + r.contratos > 0)
+      .sort((a, b) => b.contratos - a.contratos || b.vgv - a.vgv || b.leads - a.leads);
+  }, [metricasPorCorretor]);
 
   // ── Tier 3: Gráficos históricos (14 dias por padrão — antes 30) ──────────
   const { data: metricasHistoricas } = trpc.graficos.historico.useQuery({ dias: 14 }, tier3);
@@ -946,6 +1056,125 @@ export default function Dashboard() {
               </div>
             )}
 
+            {/* ================================================================ */}
+            {/* MÉTRICAS POR FASE — POR CORRETOR                             */}
+            {/* ================================================================ */}
+            <div className="mb-8">
+              <div className="flex items-center gap-2 mb-4">
+                <Users className="h-5 w-5 text-primary" />
+                <h2 className="text-lg font-semibold">Métricas por Corretor</h2>
+                {!metricasPorCorretor && (
+                  <span className="text-xs text-muted-foreground">(carregando...)</span>
+                )}
+              </div>
+
+              {/* Pipeline por Corretor — tabela combinada (todas as fases) */}
+              {pipelinePorCorretor.length > 0 && (
+                <Card className="mb-4 overflow-hidden">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4 text-primary" />
+                      Pipeline por Corretor — Visão de Fases
+                    </CardTitle>
+                    <CardDescription>Cada fase do funil por corretor no período selecionado</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="pl-4 w-8">#</TableHead>
+                            <TableHead className="pl-2">Corretor</TableHead>
+                            <TableHead className="text-center text-blue-600 dark:text-blue-400">Leads</TableHead>
+                            <TableHead className="text-center text-cyan-600 dark:text-cyan-400">Agend.</TableHead>
+                            <TableHead className="text-center text-orange-600 dark:text-orange-400">Visitas</TableHead>
+                            <TableHead className="text-center text-purple-600 dark:text-purple-400">Análise</TableHead>
+                            <TableHead className="text-center text-green-700 dark:text-green-400">Contratos</TableHead>
+                            <TableHead className="text-right pr-4 text-green-700 dark:text-green-400">VGV</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {pipelinePorCorretor.map((row, index) => (
+                            <TableRow key={row.id} className={index < 3 ? 'bg-muted/30' : ''}>
+                              <TableCell className="pl-4 font-bold text-muted-foreground text-xs w-8">{index + 1}</TableCell>
+                              <TableCell className="font-medium pl-2 max-w-[180px] truncate">{row.nome}</TableCell>
+                              <TableCell className="text-center tabular-nums">{row.leads || <span className="text-muted-foreground/40">—</span>}</TableCell>
+                              <TableCell className="text-center tabular-nums">{row.agendamentos || <span className="text-muted-foreground/40">—</span>}</TableCell>
+                              <TableCell className="text-center tabular-nums">{row.visitas || <span className="text-muted-foreground/40">—</span>}</TableCell>
+                              <TableCell className="text-center tabular-nums">{row.analise || <span className="text-muted-foreground/40">—</span>}</TableCell>
+                              <TableCell className="text-center tabular-nums font-semibold text-green-700 dark:text-green-400">
+                                {row.contratos > 0 ? row.contratos : <span className="text-muted-foreground/40">—</span>}
+                              </TableCell>
+                              <TableCell className="text-right pr-4 tabular-nums text-green-700 dark:text-green-400 font-semibold">
+                                {row.vgv > 0 ? formatCurrency(row.vgv) : <span className="text-muted-foreground/40">—</span>}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 5 CorretorRankCards em grid responsivo */}
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                <CorretorRankCard
+                  title="Leads"
+                  icon={Users}
+                  iconClass="text-blue-500"
+                  total={metrics?.total}
+                  items={leadsPorCorretor}
+                  getValue={(i) => i.totalLeads}
+                  getLabel={(i) => i.nome}
+                  isLoading={!metricasPorCorretor && loadStage >= 2}
+                />
+                <CorretorRankCard
+                  title="Agendamentos"
+                  icon={Calendar}
+                  iconClass="text-cyan-500"
+                  total={metrics?.agendado}
+                  items={agendamentosPorCorretor}
+                  getValue={(i) => i.agendados}
+                  getLabel={(i) => i.nome}
+                  isLoading={!metricasPorCorretor && loadStage >= 2}
+                />
+                <CorretorRankCard
+                  title="Visitas"
+                  icon={Eye}
+                  iconClass="text-orange-500"
+                  total={metrics?.visitaRealizada}
+                  items={visitasPorCorretor}
+                  getValue={(i) => i.visitas}
+                  getLabel={(i) => i.nome}
+                  isLoading={!metricasPorCorretor && loadStage >= 2}
+                />
+                <CorretorRankCard
+                  title="Análise de Crédito"
+                  icon={FileCheck}
+                  iconClass="text-purple-500"
+                  total={metrics?.analiseCredito}
+                  items={pastasPorCorretor}
+                  getValue={(i) => i.pastas}
+                  getLabel={(i) => i.nome}
+                  isLoading={!metricasPorCorretor && loadStage >= 2}
+                />
+                <CorretorRankCard
+                  title="Contratos / VGV"
+                  icon={Trophy}
+                  iconClass="text-green-500"
+                  total={metrics?.contratoFechado}
+                  items={vendasPorCorretor}
+                  getValue={(i) => i.vendas}
+                  getLabel={(i) => i.nome}
+                  isLoading={!metricasPorCorretor && loadStage >= 2}
+                  extraCol={(i) => i.vgv > 0 ? (
+                    <span className="text-xs text-green-600 dark:text-green-400 tabular-nums">{formatCurrency(i.vgv)}</span>
+                  ) : null}
+                />
+              </div>
+            </div>
+
             {/* Tabela de Contratos Fechados */}
             <div className="mb-8">
               <Card>
@@ -1315,172 +1544,6 @@ export default function Dashboard() {
             {/* Relatório de Performance Semanal */}
             <div className="mb-8">
               <PerformanceSemanal />
-            </div>
-
-            {/* Tabelas de ranking - Linha 1: Leads, Agendamentos, Visitas */}
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-3 mb-4">
-              {/* Leads por Corretor */}
-              <Card className="flex flex-col">
-                <CardHeader>
-                  <CardTitle className="text-base">Leads por Corretor</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 overflow-hidden p-0">
-                  {leadsPorCorretor && leadsPorCorretor.length > 0 ? (
-                    <div className="overflow-y-auto max-h-64">
-                      <Table>
-                        <TableHeader className="sticky top-0 bg-card z-10">
-                          <TableRow>
-                            <TableHead className="pl-6">Corretor</TableHead>
-                            <TableHead className="text-right w-16 pr-6">Leads</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {leadsPorCorretor.map((item) => (
-                            <TableRow key={item.id}>
-                              <TableCell className="font-medium truncate max-w-[140px] pl-6">{item.nome}</TableCell>
-                              <TableCell className="text-right w-16 pr-6">{item.totalLeads}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  ) : (
-                    <p className="text-center text-muted-foreground py-4">Sem dados</p>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Agendamentos por Corretor */}
-              <Card className="flex flex-col">
-                <CardHeader>
-                  <CardTitle className="text-base">Agendamentos</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 overflow-hidden p-0">
-                  {agendamentosPorCorretor && agendamentosPorCorretor.length > 0 ? (
-                    <div className="overflow-y-auto max-h-64">
-                      <Table>
-                        <TableHeader className="sticky top-0 bg-card z-10">
-                          <TableRow>
-                            <TableHead className="pl-6">Corretor</TableHead>
-                            <TableHead className="text-right w-16 pr-6">Agend.</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {agendamentosPorCorretor.map((item) => (
-                            <TableRow key={item.id}>
-                              <TableCell className="font-medium truncate max-w-[140px] pl-6">{item.nome}</TableCell>
-                              <TableCell className="text-right w-16 pr-6">{item.agendados}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  ) : (
-                    <p className="text-center text-muted-foreground py-4">Sem dados</p>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Visitas por Corretor */}
-              <Card className="flex flex-col">
-                <CardHeader>
-                  <CardTitle className="text-base">Visitas Realizadas</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 overflow-hidden p-0">
-                  {visitasPorCorretor && visitasPorCorretor.length > 0 ? (
-                    <div className="overflow-y-auto max-h-64">
-                      <Table>
-                        <TableHeader className="sticky top-0 bg-card z-10">
-                          <TableRow>
-                            <TableHead className="pl-6">Corretor</TableHead>
-                            <TableHead className="text-right w-16 pr-6">Visitas</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {visitasPorCorretor.map((item) => (
-                            <TableRow key={item.id}>
-                              <TableCell className="font-medium truncate max-w-[140px] pl-6">{item.nome}</TableCell>
-                              <TableCell className="text-right w-16 pr-6">{item.visitas}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  ) : (
-                    <p className="text-center text-muted-foreground py-4">Sem dados</p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Tabelas de ranking - Linha 2: Vendas, Pastas */}
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
-              {/* Vendas por Corretor */}
-              <Card className="flex flex-col">
-                <CardHeader>
-                  <CardTitle className="text-base">Vendas / VGV</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 overflow-hidden p-0">
-                  {vendasPorCorretor && vendasPorCorretor.length > 0 ? (
-                    <div className="overflow-y-auto max-h-64">
-                      <Table>
-                        <TableHeader className="sticky top-0 bg-card z-10">
-                          <TableRow>
-                            <TableHead className="pl-6">Corretor</TableHead>
-                            <TableHead className="text-right pr-6">Vendas</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {vendasPorCorretor.map((item) => (
-                            <TableRow key={item.id}>
-                              <TableCell className="font-medium truncate max-w-[200px] pl-6">{item.nome}</TableCell>
-                              <TableCell className="text-right pr-6">
-                                {item.vendas}
-                                <span className="text-xs text-muted-foreground ml-1">
-                                  ({formatCurrency(item.vgv)})
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  ) : (
-                    <p className="text-center text-muted-foreground py-4">Sem dados</p>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Pastas por Corretor */}
-              <Card className="flex flex-col">
-                <CardHeader>
-                  <CardTitle className="text-base">Pastas (Análise de Crédito)</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 overflow-hidden p-0">
-                  {pastasPorCorretor && pastasPorCorretor.length > 0 ? (
-                    <div className="overflow-y-auto max-h-64">
-                      <Table>
-                        <TableHeader className="sticky top-0 bg-card z-10">
-                          <TableRow>
-                            <TableHead className="pl-6">Corretor</TableHead>
-                            <TableHead className="text-right w-16 pr-6">Pastas</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {pastasPorCorretor.map((item) => (
-                            <TableRow key={item.id}>
-                              <TableCell className="font-medium truncate max-w-[200px] pl-6">{item.nome}</TableCell>
-                              <TableCell className="text-right w-16 pr-6 font-semibold">{item.pastas}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  ) : (
-                    <p className="text-center text-muted-foreground py-4">Sem dados</p>
-                  )}
-                </CardContent>
-              </Card>
             </div>
 
             {/* Relatório de Leads Criados por Corretor */}
