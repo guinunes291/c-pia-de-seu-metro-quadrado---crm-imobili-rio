@@ -1,8 +1,8 @@
 {
   "build_command": "pnpm run build",
   "capabilities": [
-    "server",
     "db",
+    "server",
     "user"
   ],
   "dev_command": "pnpm run dev",
@@ -14,10 +14,10 @@
   ],
   "git_remote": {
     "repo_url": "s3://vida-prod-gitrepo/webdev-git/310419663032188321/KioE9a9tzwqrRivzMGNay6",
-    "access_key_id": "ASIAZV3A2ECZBWXEVLIQ",
-    "secret_access_key": "BMNPW27A1YP8ST2PgP8d3XXlYO8AcnGYjXS5kg64",
-    "session_token": "IQoJb3JpZ2luX2VjEBsaCXVzLWVhc3QtMSJHMEUCID3YhK/Im95+kgRuhkk0c/kvT/bpbRAVB4V+G6kLlYyZAiEA8nYG75ILpQYfJiQDlPuZqHVTJuxFR5fjNLlQFLWFeSEq/gMI4///////////ARAEGgw2NjUzODYwOTg4NjYiDNgzeubFLYPXhlcBECrSA74tddgfPoGi/V0P4yn/1vWzVPSvVWde/+Pe+Io+rULbDDk/xeF09ERTwusYA4uaeNAoHpqS+eZj4E7H8TTpUAZahkgE3cHyWtmG7Z5wMGgP19+0TPgpje8lt8r2Vcf3RFVXctBFtNvjCzpRMOBumhKtpB3oMuW1EFoeKXh5ec7KRLGvn0NlTRlgK7yRr/0x0BZsySWQdUXqf38vWDqhBAkffi8+/xQl2i59paggW7r0JTnPUDasVC7wQMDZIodHB0/f0lKWIG5vQXhAHK6/X0JzVtHsxukpcuUFoOve7zNzOML5hf5Uiht2Sf1zJK3fQyg1PCt7Po95VQBuXFvzrtkkP3Sor4SMZrV0NTEfFfdlV+ml407HiajycbviPyr5BUa1V6B7ZeMo8DzxHD7QRZfK/x/Zlcm6LkK9NK5QoNLpBJXwrhtfwiIQqo8Jd4xVdRGkP6YZIt8CfTDHOHtAWvlO0pvSGF4rOZQabCv1tImcHR2gao0ciBrvvQnA9601ZInhNfIOFPgR1isOKj3WcsxqOtOsVXDqWs9sEmuw6PicigTPyMTG27tDd+xLCzf7PAoNGVvcXeAw6UStXYL9R9FsZm6EhWzBm0dJn4Tk0fA2XKYwg7C00AY6nQEjilEtnbNrH+qbNYD1EI6xiIODOOVYqRynOLdVv5PQ/emXARujxcmCWfW0ST7EAYkEk25FCeIVpVOeYiEvHY1xyuFMUqw0b2QMw5My/fu3VAP6UlBfM1fz7v3Kb8S7Gf5hXM8DsgIscgicfKgCDqn7J+3/FE6LOvv6OM05Gdr8/PaQnDtjzTx9ZAfMjp4NdZY6Csgl/4aqhQJFHZaa",
-    "expiration": "2026-05-20T14:10:11.000Z"
+    "access_key_id": "ASIAZV3A2ECZFY3XVOMX",
+    "secret_access_key": "N22uxQV6kxW/gf1xpQdLj7Ov9Oj7rJnEaIThXiwA",
+    "session_token": "IQoJb3JpZ2luX2VjENT//////////wEaCXVzLWVhc3QtMSJIMEYCIQCyDhl6rLqGocwzqur66LAquH620v2hXZKP/oqlaEzDugIhAMEyA6J0dC3AuL+L1QfyRlPlQJr5h3mKWgb1R7UoOVorKv4DCJ3//////////wEQBBoMNjY1Mzg2MDk4ODY2Igy0ZLmy0hlfEYP5io4q0gOq6VvNqlI+a2rbGizsxqI+ZR9SGu2neWosN+H+T6Qf8bSmIjv76VBp2VT5f73cMmRw68X1VA2NJTMnt0U+xC+ho5HzBZzlPp5Uy33dY3Ah4hN3l1CEXR4KY/D43vaERbSbPNwaEJZ6TEfM4XrCsuvi341s1JZVYYFYMSNmf0eXi6I1m++AwVn/DeUrlS6R0IU92myeh2F7sO+l/hiiS7A3Rkddb3G7reexuJLql+7IR13ZewadfwoqecqycIoWWvnbuVNJY2DhsQFsjA1c7LCcoKZRJ16CRZYcDXacp5Dio2UF/QqncwN49mP2+rceAod53/c7kEFSZxSFepK+iETCUdaEKgu9rMMcmrtUQvfYMYK8FPH3c1Q4TkSXlMN1gKrS6rp/5hyVViqN+xpL3kkxv+NMx2Suro7Sbuzr8bXbyQiFPlOp4kAjsn53dREx4ii0hsvFcEKlnO3zArJVSXQIIp0wkcpO+jQQN3z/M6+OiNQZMtK8nmy+4Oamf6NUoD29BBYMPayuAcwld5CycWncxQVhSFNMjW++4gCOn9WAbgPw+aZPOlvGi7Yy7KprpZXqrurlDa6XGpq6YA14Zv3psrYG9LgwpEWja6+MVCFq1eVQMPiN3dAGOpwBWlWSOl3CZQhA2NRNyRrSuNsIgxRckUAUVax6epInrv9Ne2MBIWrOfx+juR1FAP20viC6cgAKupqwo8B1o/VNWIukp/SCj+rPjtywn8rRrEU+fg3keJrYl81Ghxur05uBdXA7kiXx3pYJ47K2cdt2wleVUOumXEmY8HfLmU0DlEFvtpwX7P6TixXMVGrH+GUJmJwDowYI9ej7zgmQ",
+    "expiration": "2026-05-28T07:33:12.000Z"
   },
   "name": "cópia-de-seu-metro-quadrado---crm-imobiliário",
   "path": "/home/ubuntu/cópia-de-seu-metro-quadrado---crm-imobiliário",
