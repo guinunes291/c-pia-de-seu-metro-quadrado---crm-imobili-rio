@@ -9,21 +9,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, CheckCircle2, UserCog } from "lucide-react";
+import { AlertCircle, UserCog } from "lucide-react";
 
 /**
  * Modal de bloqueio para onboarding obrigatório
- * 
+ *
  * Sistema de camadas:
- * 1ª camada: Perfil incompleto → bloqueia e redireciona para /configurar-perfil
+ * 1ª camada: Perfil incompleto → bloqueia e redireciona para /configuracoes
  * 2ª camada: Follow-up pendente → só aparece após completar perfil
  */
 export default function ModalOnboardingObrigatorio() {
   const [, setLocation] = useLocation();
   const [aberto, setAberto] = useState(false);
-  
-  // Query para verificar perfil
+
   const { data: verificacao } = trpc.onboarding.verificar.useQuery(undefined, {
     refetchOnMount: true,
     refetchOnWindowFocus: false,
@@ -31,21 +29,12 @@ export default function ModalOnboardingObrigatorio() {
 
   useEffect(() => {
     if (!verificacao) return;
-
     const { completo, user } = verificacao;
-
-    // Admin e Superintendente nunca são bloqueados
     if (user.role === "admin" || user.role === "superintendente") {
       setAberto(false);
       return;
     }
-
-    // Se perfil está incompleto, bloquear
-    if (!completo) {
-      setAberto(true);
-    } else {
-      setAberto(false);
-    }
+    setAberto(!completo);
   }, [verificacao]);
 
   const handleIrParaConfiguracao = () => {
@@ -53,58 +42,41 @@ export default function ModalOnboardingObrigatorio() {
     setLocation("/configuracoes");
   };
 
-  if (!verificacao || !aberto) {
-    return null;
-  }
+  if (!verificacao || !aberto) return null;
 
   const { camposFaltantes } = verificacao;
 
   return (
     <Dialog open={aberto} onOpenChange={() => {}}>
-      <DialogContent className="sm:max-w-[500px]" showCloseButton={false}>
-        <DialogHeader>
-          <div className="flex items-center justify-center mb-4">
-            <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
-              <UserCog className="h-8 w-8 text-primary" />
+      <DialogContent className="sm:max-w-[420px]" showCloseButton={false}>
+        <DialogHeader className="pb-2">
+          {/* Ícone menor e sem margem excessiva */}
+          <div className="flex items-center justify-center mb-2">
+            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+              <UserCog className="h-6 w-6 text-primary" />
             </div>
           </div>
-          <DialogTitle className="text-center text-2xl">
+          <DialogTitle className="text-center text-lg">
             Complete seu Perfil
           </DialogTitle>
-          <DialogDescription className="text-center">
-            Para ter acesso completo ao sistema, você precisa completar seu cadastro
+          <DialogDescription className="text-center text-sm">
+            Para acessar o sistema, preencha os campos obrigatórios abaixo.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              <strong>Campos obrigatórios faltantes:</strong>
-              <ul className="list-disc list-inside mt-2 space-y-1">
-                {camposFaltantes.map((campo) => (
-                  <li key={campo}>{campo}</li>
-                ))}
-              </ul>
-            </AlertDescription>
-          </Alert>
-
-          <div className="bg-muted p-4 rounded-lg">
-            <h4 className="font-medium mb-2">O que você precisa preencher:</h4>
-            <ul className="space-y-1 text-sm text-muted-foreground">
-              <li>✓ Foto de perfil</li>
-              <li>✓ Dados pessoais completos</li>
-              <li>✓ Informações profissionais</li>
-              <li>✓ Endereço completo</li>
-            </ul>
+        {/* Lista compacta de campos faltantes */}
+        {camposFaltantes.length > 0 && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+            <span>
+              <strong>Faltando:</strong> {camposFaltantes.join(", ")}
+            </span>
           </div>
-        </div>
+        )}
 
-        <div className="flex justify-center">
-          <Button onClick={handleIrParaConfiguracao} size="lg" className="w-full">
-            Completar Cadastro Agora
-          </Button>
-        </div>
+        <Button onClick={handleIrParaConfiguracao} size="sm" className="w-full mt-1">
+          Completar Cadastro Agora
+        </Button>
       </DialogContent>
     </Dialog>
   );
