@@ -1,4 +1,4 @@
-import { eq, and, desc, asc, sql, gte, lte, lt, inArray, notInArray, gt, or, isNull, isNotNull, ne, like } from "drizzle-orm";
+import { eq, and, desc, asc, sql, gte, lte, lt, inArray, notInArray, gt, or, isNull, isNotNull, ne, like, aliasedTable } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { 
@@ -115,7 +115,6 @@ export async function getDb() {
         keepAliveInitialDelay: 0,
       });
       _db = drizzle(_pool);
-      console.log('[Database] Pool criado com sucesso');
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -275,26 +274,43 @@ export async function updateUser(userId: number, data: Partial<typeof users.$inf
 export async function countLeadsRecebidosHoje(corretorId: number, dataInicio?: Date) {
   const db = await getDb();
   if (!db) return 0;
-  
-  // Importar funções de timezone
+
   const { inicioDoDiaHoje, fimDoDiaHoje, inicioDoDia, fimDoDia } = await import('./timezone');
-  
-  // Se não passar data, usar hoje no fuso de São Paulo
   const dataInicioSP = dataInicio ? inicioDoDia(dataInicio) : inicioDoDiaHoje();
   const dataFimSP = dataInicio ? fimDoDia(dataInicio) : fimDoDiaHoje();
-  
+
   const result = await db
     .select({ count: sql<number>`COUNT(*)` })
     .from(leads)
-    .where(
-      and(
-        eq(leads.corretorId, corretorId),
-        gte(leads.createdAt, dataInicioSP),
-        lte(leads.createdAt, dataFimSP)
-      )
-    );
-  
+    .where(and(
+      eq(leads.corretorId, corretorId),
+      gte(leads.createdAt, dataInicioSP),
+      lte(leads.createdAt, dataFimSP),
+    ));
+
   return result[0]?.count || 0;
+}
+
+/** Bulk version: returns a map of corretorId → count for the same day window */
+export async function countLeadsRecebidosHojeBulk(corretorIds: number[], dataInicio?: Date): Promise<Map<number, number>> {
+  const db = await getDb();
+  if (!db || corretorIds.length === 0) return new Map();
+
+  const { inicioDoDiaHoje, fimDoDiaHoje, inicioDoDia, fimDoDia } = await import('./timezone');
+  const dataInicioSP = dataInicio ? inicioDoDia(dataInicio) : inicioDoDiaHoje();
+  const dataFimSP = dataInicio ? fimDoDia(dataInicio) : fimDoDiaHoje();
+
+  const rows = await db
+    .select({ corretorId: leads.corretorId, count: sql<number>`COUNT(*)` })
+    .from(leads)
+    .where(and(
+      inArray(leads.corretorId, corretorIds),
+      gte(leads.createdAt, dataInicioSP),
+      lte(leads.createdAt, dataFimSP),
+    ))
+    .groupBy(leads.corretorId);
+
+  return new Map(rows.map((r) => [r.corretorId!, Number(r.count)]));
 }
 
 /**
@@ -331,29 +347,34 @@ export async function countLeadsWebhookRecebidosHoje(corretorId: number, dataIni
 }
 
 export async function createCorretor(data: {
-  name: string;
+  name?: string;
+  nome?: string; // alias pt-BR
   email?: string;
   telefone?: string;
   status?: "presente" | "ausente";
+  statusPlantao?: "presente" | "ausente"; // alias pt-BR
   fotoUrl?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
+  // Aceitar nome/name e statusPlantao/status como aliases
+  const resolvedName = data.name || data.nome || "Corretor";
+  const resolvedStatus = data.status || data.statusPlantao || "ausente";
   // Gera um openId temporário para corretores criados manualmente
   const openId = `corretor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
   const result = await db.insert(users).values({
     openId,
-    name: data.name,
+    name: resolvedName,
     email: data.email || null,
     telefone: data.telefone || null,
     role: "corretor",
-    status: data.status || "ausente",
+    status: resolvedStatus,
     fotoUrl: data.fotoUrl || null,
   });
-  
-  return result;
+  // Retornar o usuário criado com o id (não apenas o ResultSetHeader)
+  const insertId = (result as any)[0]?.insertId ?? result.insertId;
+  const criado = await db.select().from(users).where(eq(users.id, Number(insertId))).limit(1);
+  return criado[0] ?? { id: Number(insertId), openId, name: resolvedName, role: 'corretor' as const };
 }
 
 export async function updateCorretor(id: number, data: {
@@ -370,6 +391,8 @@ export async function updateCorretor(id: number, data: {
   dataCredenciamento?: Date | null;
   dataDescredenciamento?: Date | null;
   situacao?: "ativo" | "inativo";
+  // Permissões
+  acessaLinksUteis?: boolean;
   // Endereço
   logradouro?: string;
   numero?: string;
@@ -414,7 +437,6 @@ export async function deleteCorretor(id: number, redistribuirLeads: boolean = fa
     
     // Redistribuir leads para outros corretores
     const leadsRedistribuidos = await redistribuirLeadsDoCorretor(id);
-    console.log(`[DeleteCorretor] ${leadsRedistribuidos} leads redistribuídos do corretor ${id}`);
   }
   
   // Remover corretor da fila de distribuição
@@ -453,7 +475,6 @@ export async function deleteCorretor(id: number, redistribuirLeads: boolean = fa
   await db.delete(resumoPresencaDiaria).where(eq(resumoPresencaDiaria.corretorId, id));
   await db.delete(historicoPresenca).where(eq(historicoPresenca.corretorId, id));
 
-  console.log(`[DeleteCorretor] Registros operacionais do corretor ${id} removidos`);
   
   // Excluir o corretor
   await db.delete(users).where(eq(users.id, id));
@@ -1253,7 +1274,7 @@ export async function bulkUpdateLeadStatus(
   return { atualizados: leadsAtuais.length };
 }
 
-export async function updateLead(id: number, data: Partial<InsertLead>) {
+export async function updateLead(id: number, data: Partial<InsertLead> & { _observacaoStatus?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   
@@ -1268,6 +1289,7 @@ export async function updateLead(id: number, data: Partial<InsertLead>) {
         corretorId: leadAtual.corretorId || 0,
         statusAnterior: leadAtual.status as any,
         statusNovo: data.status as any,
+        observacao: data._observacaoStatus,
       });
       
       // Se mudou para "em_atendimento", criar follow-up automático para o próximo dia às 09:00
@@ -1294,9 +1316,7 @@ export async function updateLead(id: number, data: Partial<InsertLead>) {
             status: 'pendente',
           });
           
-          console.log(`[updateLead] Follow-up automático criado para lead ${id} em ${dataFollowUp.toISOString()}`);
         } else {
-          console.log(`[updateLead] Follow-up já existe para lead ${id} em ${dataFollowUp.toISOString()}, pulando criação`);
         }
       }
     }
@@ -1323,13 +1343,23 @@ export async function registrarTransicaoStatus(data: {
 }) {
   const db = await getDb();
   if (!db) return;
-  
+  // Inserir na tabela de transições de status (auditoria de funil)
   await db.insert(leadStatusTransitions).values({
     leadId: data.leadId,
     corretorId: data.corretorId,
     statusAnterior: data.statusAnterior as any,
     statusNovo: data.statusNovo as any,
     observacao: data.observacao,
+  });
+  // Inserir também em leadHistory para que getLeadHistory retorne a mudança
+  await db.insert(leadHistory).values({
+    leadId: data.leadId,
+    corretorId: data.corretorId,
+    tipo: 'mudanca_status' as any,
+    resultado: 'outro' as any,
+    observacoes: data.observacao ?? '',
+    statusAnterior: data.statusAnterior,
+    statusNovo: data.statusNovo,
   });
 }
 
@@ -1863,67 +1893,56 @@ export async function getEstatisticasPorCorretor(corretoresIds?: number[] | null
       .where(eq(users.role, 'corretor'));
   }
   
-  const estatisticas = await Promise.all(corretores.map(async (corretor) => {
-    // Total de leads
-    const totalLeads = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(eq(leads.corretorId, corretor.id));
-    
-    // Leads por status
-    const leadsNovos = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'novo')));
-    
-    const leadsAguardando = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'aguardando_atendimento')));
-    
-    const leadsEmAtendimento = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'em_atendimento')));
-    
-    const leadsAgendados = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'agendado')));
-    
-    const leadsVisitou = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'visita_realizada')));
-    
-    const leadsAnalise = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'analise_credito')));
-    
-    const leadsContrato = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'contrato_fechado')));
-    
-    const leadsPerdidos = await db.select({ count: sql<number>`count(*)` })
-      .from(leads)
-      .where(and(eq(leads.corretorId, corretor.id), eq(leads.status, 'perdido')));
-    
-    const total = Number(totalLeads[0]?.count || 0);
-    const contratos = Number(leadsContrato[0]?.count || 0);
+  // Single GROUP BY query replaces 8 queries per corretor (8N → 1)
+  const corretorIds = corretores.map((c) => c.id);
+  const countRows = corretorIds.length
+    ? await db
+        .select({
+          corretorId: leads.corretorId,
+          status: leads.status,
+          count: sql<number>`count(*)`,
+        })
+        .from(leads)
+        .where(
+          and(
+            eq(leads.naLixeira, false),
+            inArray(leads.corretorId, corretorIds),
+          ),
+        )
+        .groupBy(leads.corretorId, leads.status)
+    : [];
+
+  // Build lookup: corretorId → status → count
+  const countMap = new Map<number, Record<string, number>>();
+  for (const row of countRows) {
+    if (!row.corretorId) continue;
+    if (!countMap.has(row.corretorId)) countMap.set(row.corretorId, {});
+    countMap.get(row.corretorId)![row.status] = Number(row.count);
+  }
+
+  const estatisticas = corretores.map((corretor) => {
+    const statusCounts = countMap.get(corretor.id) ?? {};
+    const total = Object.values(statusCounts).reduce((s, v) => s + v, 0);
+    const contratos = statusCounts['contrato_fechado'] ?? 0;
     const taxaConversao = total > 0 ? (contratos / total) * 100 : 0;
-    
     return {
       id: corretor.id,
       nome: corretor.name || 'Sem nome',
       email: corretor.email || '',
       status: corretor.status || 'ausente',
       totalLeads: total,
-      novos: Number(leadsNovos[0]?.count || 0),
-      aguardando: Number(leadsAguardando[0]?.count || 0),
-      emAtendimento: Number(leadsEmAtendimento[0]?.count || 0),
-      agendados: Number(leadsAgendados[0]?.count || 0),
-      visitou: Number(leadsVisitou[0]?.count || 0),
-      analise: Number(leadsAnalise[0]?.count || 0),
+      novos: statusCounts['novo'] ?? 0,
+      aguardando: statusCounts['aguardando_atendimento'] ?? 0,
+      emAtendimento: statusCounts['em_atendimento'] ?? 0,
+      agendados: statusCounts['agendado'] ?? 0,
+      visitou: statusCounts['visita_realizada'] ?? 0,
+      analise: statusCounts['analise_credito'] ?? 0,
       contratos,
-      perdidos: Number(leadsPerdidos[0]?.count || 0),
+      perdidos: statusCounts['perdido'] ?? 0,
       taxaConversao: taxaConversao.toFixed(1),
     };
-  }));
-  
+  });
+
   return estatisticas;
 }
 
@@ -2048,7 +2067,6 @@ export interface DashboardFilters {
 }
 
 export async function getDashboardMetrics(filtros?: DashboardFilters) {
-  console.log('[getDashboardMetrics] Filtros recebidos:', JSON.stringify(filtros));
   
   const db = await getDb();
   if (!db) return null;
@@ -2158,7 +2176,6 @@ export async function getDashboardMetrics(filtros?: DashboardFilters) {
     if (r.status === 'rejected') {
       console.error(`[getDashboardMetrics] Query "${queryNames[i]}" falhou:`, r.reason);
     } else {
-      console.log(`[getDashboardMetrics] Query "${queryNames[i]}" OK:`, JSON.stringify(r.value?.[0] ?? {}));
     }
   });
 
@@ -2188,7 +2205,6 @@ export async function getDashboardMetrics(filtros?: DashboardFilters) {
     vgv: Number(vgvResult[0]?.total || 0),
   };
 
-  console.log('[getDashboardMetrics] Resultado final:', JSON.stringify(metricsResult));
   return metricsResult;
 }
 
@@ -2230,7 +2246,6 @@ export async function diagnosticoDashboard() {
       db.select({ status: leads.status, count: sql<number>`COUNT(*)` }).from(leads).groupBy(leads.status).limit(20)),
   ]);
 
-  console.log('[diagnosticoDashboard] Resultado:', JSON.stringify(queries, null, 2));
 
   return { dbOk, databaseUrl: !!process.env.DATABASE_URL, queries };
 }
@@ -2786,7 +2801,7 @@ export async function getMetricasHistoricas(dias: number = 30, corretoresIds?: n
 
   // Uma única query com GROUP BY DATE e status
   const rows = await db.select({
-    dataStr: sql<string>`DATE_FORMAT(${leads.createdAt}, '%Y-%m-%d')`.as('dataStr'),
+    dataStr: sql<string>`DATE_FORMAT(MIN(${leads.createdAt}), '%Y-%m-%d')`.as('dataStr'),
     status: leads.status,
     count: sql<number>`count(*)`.as('count'),
   })
@@ -3160,12 +3175,29 @@ export async function getRankingCorretores(mes?: number | null, ano?: number | n
       .groupBy(leads.corretorId, users.name, users.fotoUrl)
       .orderBy(sql`vgvTotal DESC`);
     
+    // Buscar metaVGV individual para o período (secondary query, não quebra o SELECT principal)
+    const mesRef = mes ?? (dataInicio ? dataInicio.getMonth() + 1 : null);
+    const anoRef = ano ?? (dataInicio ? dataInicio.getFullYear() : null);
+    const metaVGVMap = new Map<number, number>();
+    if (mesRef && anoRef && result.length > 0) {
+      const corretorIds = result.map(r => Number(r.corretorId)).filter(Boolean);
+      const metasRows = await db.select({ corretorId: metas.corretorId, metaVGV: metas.metaVGV })
+        .from(metas)
+        .where(and(
+          inArray(metas.corretorId, corretorIds),
+          eq(metas.mes, mesRef),
+          eq(metas.ano, anoRef),
+        ));
+      for (const m of metasRows) metaVGVMap.set(m.corretorId, Number(m.metaVGV || 0));
+    }
+
     return result.map((row, index) => ({
       corretorId: Number(row.corretorId),
       corretorNome: row.corretorNome || 'Sem nome',
       corretorFoto: row.corretorFoto || null,
       vgvTotal: Number(row.vgvTotal || 0),
       contratosFechados: Number(row.contratosFechados || 0),
+      metaVGV: metaVGVMap.get(Number(row.corretorId)) || 0,
       posicao: index + 1,
     }));
   } catch (error) {
@@ -3496,18 +3528,15 @@ export async function distribuirLeadPelaRoleta(leadId: number): Promise<number |
     // Lead do projeto foco - usar fila foco (SEM LIMITE)
     corretorId = await getProximoCorretorFilaFoco();
     if (corretorId) tipoFilaUsada = 'foco';
-    console.log(`[Roleta] Lead do projeto foco - tentando fila foco: ${corretorId ? 'sucesso' : 'sem corretor'}`);
   }
   
   if (!corretorId) {
     // Lead de outro projeto OU fila foco sem corretores - usar fila geral (COM LIMITE)
     corretorId = await getProximoCorretorFila();
     if (corretorId) tipoFilaUsada = 'geral';
-    console.log(`[Roleta] Usando fila geral: ${corretorId ? 'sucesso' : 'sem corretor'}`);
   }
   
   if (!corretorId) {
-    console.log('[Roleta] Nenhum corretor disponível para receber o lead');
     return null;
   }
   
@@ -3541,7 +3570,6 @@ export async function distribuirLeadPelaRoleta(leadId: number): Promise<number |
   try {
     await criarFollowUpParaLead(leadId, corretorId);
   } catch (e) {
-    console.log('[Roleta] Erro ao criar follow-up:', e);
   }
   
   // Buscar dados do lead para notificação
@@ -3565,7 +3593,6 @@ export async function distribuirLeadPelaRoleta(leadId: number): Promise<number |
     console.warn('[Roleta] SSE/cache notify falhou (não crítico):', e);
   }
 
-  console.log(`[Roleta] Lead ${leadId} distribuído para corretor ${corretorId}`);
   
   return corretorId;
 }
@@ -3691,7 +3718,6 @@ export async function processarLeadWebhook(webhookToken: string, dadosLead: {
     try {
       dataHoraCriacao = new Date(dadosLead.dataHoraCriacao);
     } catch (e) {
-      console.log('[Webhook] Erro ao parsear data:', dadosLead.dataHoraCriacao);
     }
   }
   
@@ -3709,14 +3735,6 @@ export async function processarLeadWebhook(webhookToken: string, dadosLead: {
     finalidadeImovel: dadosLead.finalidadeImovel,
     dataHoraCriacao: dadosLead.dataHoraCriacao ? new Date(dadosLead.dataHoraCriacao) : undefined,
     origemWebhook: true, // Marcar como lead via webhook para notificação urgente
-  });
-  
-  console.log('[Webhook] Lead criado com sucesso:', {
-    leadId: leadCriado.id,
-    nome: leadCriado.nome,
-    projectId: leadCriado.projectId,
-    faixaRenda: leadCriado.faixaRenda,
-    origemWebhook: leadCriado.origemWebhook
   });
   
   // Incrementar contador do webhook
@@ -3746,7 +3764,6 @@ export async function processarLeadWebhook(webhookToken: string, dadosLead: {
             leadCampanha: leadCriado.campanha || undefined,
             leadFaixaRenda: leadCriado.faixaRenda || undefined,
           });
-          console.log('[Webhook] Notificação por email enviada para:', corretor.email);
         } catch (emailError) {
           console.error('[Webhook] Erro ao enviar email:', emailError);
         }
@@ -3845,14 +3862,6 @@ export async function processarLeadWebhookFoco(webhookToken: string, dadosLead: 
     origemWebhook: true, // Marcar como lead via webhook para notificação urgente
   });
   
-  console.log('[Webhook Foco] Lead criado com sucesso:', {
-    leadId: leadCriado.id,
-    nome: leadCriado.nome,
-    projectId: leadCriado.projectId,
-    faixaRenda: leadCriado.faixaRenda,
-    origemWebhook: leadCriado.origemWebhook
-  });
-  
   // Incrementar contador do webhook
   await incrementarLeadsWebhook(webhook.id);
   
@@ -3890,7 +3899,6 @@ export async function processarLeadWebhookFoco(webhookToken: string, dadosLead: 
     try {
       await criarFollowUpParaLead(leadCriado.id, corretorId);
     } catch (e) {
-      console.log('[Webhook Foco] Erro ao criar follow-up:', e);
     }
     
     // Notificar corretor
@@ -3916,7 +3924,6 @@ export async function processarLeadWebhookFoco(webhookToken: string, dadosLead: 
             leadCampanha: undefined,
             leadFaixaRenda: leadCriado.faixaRenda || undefined,
           });
-          console.log('[Webhook Foco] Notificação por email enviada para:', corretor.email);
         } catch (emailError) {
           console.error('[Webhook Foco] Erro ao enviar email:', emailError);
         }
@@ -3943,9 +3950,7 @@ export async function processarLeadWebhookFoco(webhookToken: string, dadosLead: 
             webhookUrl: webhookNotificacaoUrl, // URL específica da fila Foco configurada pelo admin
           });
           if (zapierResult.success) {
-            console.log('[Webhook Foco] Notificação WhatsApp enviada via Zapier para:', corretor.name);
           } else {
-            console.log('[Webhook Foco] Zapier não configurado ou falhou:', zapierResult.error);
           }
         } catch (zapierError) {
           console.error('[Webhook Foco] Erro ao notificar via Zapier:', zapierError);
@@ -3955,7 +3960,6 @@ export async function processarLeadWebhookFoco(webhookToken: string, dadosLead: 
       console.error('[Webhook Foco] Erro ao notificar corretor:', error);
     }
     
-    console.log(`[Webhook Foco] Lead ${leadCriado.id} distribuído para corretor ${corretorId} (Fila Foco)`);
 
     // Push notification nativa (non-blocking) -- funciona mesmo com aba fechada / PWA
     try {
@@ -4052,7 +4056,9 @@ export async function getHistoricoDistribuicao(filtros?: {
   
   const total = Number(countResult[0]?.count || 0);
   
-  // Buscar items com joins
+  // Two aliases: one for corretor, one for distribuidor (avoids N+1 for distribuidor names)
+  const distribuidorAlias = aliasedTable(users, "distribuidor");
+
   const items = await db.select({
     id: distributionLog.id,
     leadId: distributionLog.leadId,
@@ -4063,33 +4069,19 @@ export async function getHistoricoDistribuicao(filtros?: {
     tipo: distributionLog.tipo,
     motivo: distributionLog.motivo,
     distribuidoPorId: distributionLog.distribuidoPorId,
+    distribuidoPorNome: distribuidorAlias.name,
     createdAt: distributionLog.createdAt,
   })
     .from(distributionLog)
     .leftJoin(leads, eq(distributionLog.leadId, leads.id))
     .leftJoin(users, eq(distributionLog.corretorId, users.id))
+    .leftJoin(distribuidorAlias, eq(distributionLog.distribuidoPorId, distribuidorAlias.id))
     .where(whereClause)
     .orderBy(desc(distributionLog.createdAt))
     .limit(filtros?.limit || 50)
     .offset(filtros?.offset || 0);
-  
-  // Buscar nomes dos distribuidores (se manual)
-  const itemsWithDistribuidor = await Promise.all(items.map(async (item) => {
-    let distribuidoPorNome: string | null = null;
-    if (item.distribuidoPorId) {
-      const distribuidor = await db.select({ name: users.name })
-        .from(users)
-        .where(eq(users.id, item.distribuidoPorId))
-        .limit(1);
-      distribuidoPorNome = distribuidor[0]?.name || null;
-    }
-    return {
-      ...item,
-      distribuidoPorNome,
-    } as HistoricoDistribuicaoItem;
-  }));
-  
-  return { items: itemsWithDistribuidor, total };
+
+  return { items: items as unknown as HistoricoDistribuicaoItem[], total };
 }
 
 // Contar distribuições por período
@@ -4567,7 +4559,7 @@ export async function registrarTentativaFollowUp(
     const { proximoDiaAs9h } = await import('./timezone');
     const proximoFollowUp = lead.status === "em_atendimento" ? proximoDiaAs9h() : null;
 
-    // Verificar se já existe follow-up pendente (antes da transação para não bloquear)
+    // Verificar se já existe outro follow-up pendente (excluindo o atual que será marcado como concluuído)
     let existente: typeof followUps.$inferSelect | null = null;
     if (proximoFollowUp) {
       const existenteResult = await db.select()
@@ -4576,6 +4568,7 @@ export async function registrarTentativaFollowUp(
           eq(followUps.leadId, atual.leadId),
           eq(followUps.corretorId, atual.corretorId),
           eq(followUps.status, "pendente"),
+          ne(followUps.id, followUpId),
           sql`DATE(${followUps.dataFollowUp}) = DATE(${proximoFollowUp})`
         ))
         .limit(1);
@@ -4611,9 +4604,7 @@ export async function registrarTentativaFollowUp(
           dataFollowUp: proximoFollowUp,
           status: "pendente"
         });
-        console.log(`[registrarTentativaFollowUp] Novo follow-up criado para lead ${atual.leadId} em ${proximoFollowUp.toISOString()}`);
       } else if (proximoFollowUp && existente) {
-        console.log(`[registrarTentativaFollowUp] Follow-up já existe para lead ${atual.leadId} em ${proximoFollowUp.toISOString()}, pulando criação`);
       }
     });
 
@@ -4721,7 +4712,6 @@ export async function getFollowUpsDoDiaExpandido(
 ) {
   const db = await getDb();
   if (!db) {
-    console.log("[getFollowUpsDoDiaExpandido] Erro: banco de dados não disponível");
     return [];
   }
   
@@ -4732,8 +4722,6 @@ export async function getFollowUpsDoDiaExpandido(
     const amanha = new Date(hoje);
     amanha.setDate(amanha.getDate() + 1);
     
-    console.log("[getFollowUpsDoDiaExpandido] Buscando follow-ups para corretorId:", corretorId);
-    console.log("[getFollowUpsDoDiaExpandido] Período: de", hoje.toISOString(), "até", amanha.toISOString());
     
     // Construir condições de filtro
     const conditions = [
@@ -4770,6 +4758,7 @@ export async function getFollowUpsDoDiaExpandido(
       leadProjectId: leads.projectId,
       leadOrigem: leads.origem,
       leadCriadoEm: leads.createdAt,
+      leadUpdatedAt: leads.updatedAt,
     })
       .from(followUps)
       .leftJoin(leads, eq(followUps.leadId, leads.id))
@@ -4788,7 +4777,6 @@ export async function getFollowUpsDoDiaExpandido(
     
     const resultado = await query;
     
-    console.log("[getFollowUpsDoDiaExpandido] Resultado: encontrados", resultado.length, "follow-ups");
     
     return resultado;
     
@@ -4961,17 +4949,32 @@ export async function getRankingDia(data?: Date) {
     .from(users)
     .where(inArray(users.role, ['corretor', 'gestor', 'superintendente', 'admin']));
   
-  // Para cada usuário, buscar suas atividades do dia
-  const ranking = await Promise.all(todosCorretores.map(async (corretor) => {
-    // Buscar atividades do corretor no dia (usando DATE para ignorar horário)
-    const atividadesCorretor = await db.select()
+  const corretorIds = todosCorretores.map((c) => c.corretorId);
+  if (corretorIds.length === 0) return [];
+
+  // Single query for all activities on that day (replaces N per-corretor queries)
+  const [todasAtividades, todasMetas] = await Promise.all([
+    db.select()
       .from(atividadesDiarias)
       .where(and(
-        eq(atividadesDiarias.corretorId, corretor.corretorId),
+        inArray(atividadesDiarias.corretorId, corretorIds),
         sql`DATE(${atividadesDiarias.data}) = DATE(${inicioDia})`
-      ));
-    
-    // Somar todas as atividades do corretor no dia
+      )),
+    db.select()
+      .from(metas)
+      .where(inArray(metas.corretorId, corretorIds)),
+  ]);
+
+  // Build lookup maps
+  const atividadesMap = new Map<number, typeof todasAtividades>();
+  for (const ativ of todasAtividades) {
+    if (!atividadesMap.has(ativ.corretorId)) atividadesMap.set(ativ.corretorId, []);
+    atividadesMap.get(ativ.corretorId)!.push(ativ);
+  }
+  const metasMap = new Map(todasMetas.map((m) => [m.corretorId, m]));
+
+  const ranking = todosCorretores.map((corretor) => {
+    const atividadesCorretor = atividadesMap.get(corretor.corretorId) ?? [];
     const totais = atividadesCorretor.reduce((acc, ativ) => ({
       ligacoesRealizadas: acc.ligacoesRealizadas + ativ.ligacoesRealizadas,
       ligacoesAtendidas: acc.ligacoesAtendidas + ativ.ligacoesAtendidas,
@@ -4997,15 +5000,8 @@ export async function getRankingDia(data?: Date) {
       vgvDia: 0,
       pontuacaoTotal: 0,
     });
-    
-    // Buscar metas do corretor
-    const metasCorretor = await db.select()
-      .from(metas)
-      .where(eq(metas.corretorId, corretor.corretorId))
-      .limit(1);
-    
-    const meta = metasCorretor[0];
-    
+
+    const meta = metasMap.get(corretor.corretorId);
     return {
       id: corretor.corretorId,
       corretorId: corretor.corretorId,
@@ -5019,8 +5015,8 @@ export async function getRankingDia(data?: Date) {
         contratosMeta: Math.ceil(meta.metaContratos / 22) || 0,
       } : null
     };
-  }));
-  
+  });
+
   // Ordenar por pontuação (maior para menor)
   return ranking.sort((a, b) => b.pontuacaoTotal - a.pontuacaoTotal);
 }
@@ -5028,6 +5024,7 @@ export async function getRankingDia(data?: Date) {
 // Obter ranking por período (com filtro de datas)
 export async function getRankingPorPeriodo(dataInicio?: Date, dataFim?: Date, corretoresIds?: number[] | null) {
   const db = await getDb();
+  const { inicioDoDiaHoje } = await import('./timezone');
   if (!db) return [];
   
   // Se corretoresIds for array vazio, não há ninguém para mostrar
@@ -5046,7 +5043,7 @@ export async function getRankingPorPeriodo(dataInicio?: Date, dataFim?: Date, co
   
   // Se não tiver filtro, usar hoje
   if (conditions.length === 0) {
-    const hoje = new Date();
+    const hoje = inicioDoDiaHoje();
     conditions.push(sql`DATE(${atividadesDiarias.data}) = DATE(${hoje})`);
   }
   
@@ -5099,17 +5096,27 @@ export async function getRankingSemanal() {
     .from(users)
     .where(eq(users.role, 'corretor'));
   
-  // Para cada corretor, buscar suas atividades da semana
-  const ranking = await Promise.all(todosCorretores.map(async (corretor) => {
-    const atividadesCorretor = await db.select()
-      .from(atividadesDiarias)
-      .where(and(
-        eq(atividadesDiarias.corretorId, corretor.corretorId),
-        gte(atividadesDiarias.data, inicioSemana)
-      ));
-    
-    // Somar todas as atividades
-    const totais = atividadesCorretor.reduce((acc, ativ) => ({
+  // Single query for all corretores (replaces N per-corretor queries)
+  const corretorIdsSem = todosCorretores.map((c) => c.corretorId);
+  const atividadesSemana = corretorIdsSem.length
+    ? await db.select()
+        .from(atividadesDiarias)
+        .where(and(
+          inArray(atividadesDiarias.corretorId, corretorIdsSem),
+          gte(atividadesDiarias.data, inicioSemana),
+        ))
+    : [];
+
+  // Group by corretorId in memory
+  const atividadesMapSem = new Map<number, typeof atividadesSemana>();
+  for (const ativ of atividadesSemana) {
+    if (!atividadesMapSem.has(ativ.corretorId)) atividadesMapSem.set(ativ.corretorId, []);
+    atividadesMapSem.get(ativ.corretorId)!.push(ativ);
+  }
+
+  const ranking = todosCorretores.map((corretor) => {
+    const ativs = atividadesMapSem.get(corretor.corretorId) ?? [];
+    const totais = ativs.reduce((acc, ativ) => ({
       totalLigacoes: acc.totalLigacoes + ativ.ligacoesRealizadas,
       totalAgendamentos: acc.totalAgendamentos + ativ.agendamentosConfirmados,
       totalVisitas: acc.totalVisitas + ativ.visitasRealizadas,
@@ -5117,25 +5124,10 @@ export async function getRankingSemanal() {
       totalContratos: acc.totalContratos + ativ.contratosFechados,
       totalVgv: acc.totalVgv + ativ.vgvDia,
       totalPontos: acc.totalPontos + ativ.pontuacaoTotal,
-    }), {
-      totalLigacoes: 0,
-      totalAgendamentos: 0,
-      totalVisitas: 0,
-      totalDocumentacoes: 0,
-      totalContratos: 0,
-      totalVgv: 0,
-      totalPontos: 0,
-    });
-    
-    return {
-      corretorId: corretor.corretorId,
-      corretorNome: corretor.corretorNome,
-      corretorFoto: corretor.corretorFoto,
-      ...totais,
-    };
-  }));
-  
-  // Ordenar por pontuação (maior para menor)
+    }), { totalLigacoes: 0, totalAgendamentos: 0, totalVisitas: 0, totalDocumentacoes: 0, totalContratos: 0, totalVgv: 0, totalPontos: 0 });
+    return { corretorId: corretor.corretorId, corretorNome: corretor.corretorNome, corretorFoto: corretor.corretorFoto, ...totais };
+  });
+
   return ranking.sort((a, b) => b.totalPontos - a.totalPontos);
 }
 
@@ -5157,17 +5149,26 @@ export async function getRankingMensal() {
     .from(users)
     .where(eq(users.role, 'corretor'));
   
-  // Para cada corretor, buscar suas atividades do mês
-  const ranking = await Promise.all(todosCorretores.map(async (corretor) => {
-    const atividadesCorretor = await db.select()
-      .from(atividadesDiarias)
-      .where(and(
-        eq(atividadesDiarias.corretorId, corretor.corretorId),
-        gte(atividadesDiarias.data, inicioMes)
-      ));
-    
-    // Somar todas as atividades
-    const totais = atividadesCorretor.reduce((acc, ativ) => ({
+  // Single query for all corretores of the month (replaces N per-corretor queries)
+  const corretorIdsMes = todosCorretores.map((c) => c.corretorId);
+  const atividadesMes = corretorIdsMes.length
+    ? await db.select()
+        .from(atividadesDiarias)
+        .where(and(
+          inArray(atividadesDiarias.corretorId, corretorIdsMes),
+          gte(atividadesDiarias.data, inicioMes),
+        ))
+    : [];
+
+  const atividadesMapMes = new Map<number, typeof atividadesMes>();
+  for (const ativ of atividadesMes) {
+    if (!atividadesMapMes.has(ativ.corretorId)) atividadesMapMes.set(ativ.corretorId, []);
+    atividadesMapMes.get(ativ.corretorId)!.push(ativ);
+  }
+
+  const ranking = todosCorretores.map((corretor) => {
+    const ativs = atividadesMapMes.get(corretor.corretorId) ?? [];
+    const totais = ativs.reduce((acc, ativ) => ({
       totalLigacoes: acc.totalLigacoes + ativ.ligacoesRealizadas,
       totalAgendamentos: acc.totalAgendamentos + ativ.agendamentosConfirmados,
       totalVisitas: acc.totalVisitas + ativ.visitasRealizadas,
@@ -5175,25 +5176,10 @@ export async function getRankingMensal() {
       totalContratos: acc.totalContratos + ativ.contratosFechados,
       totalVgv: acc.totalVgv + ativ.vgvDia,
       totalPontos: acc.totalPontos + ativ.pontuacaoTotal,
-    }), {
-      totalLigacoes: 0,
-      totalAgendamentos: 0,
-      totalVisitas: 0,
-      totalDocumentacoes: 0,
-      totalContratos: 0,
-      totalVgv: 0,
-      totalPontos: 0,
-    });
-    
-    return {
-      corretorId: corretor.corretorId,
-      corretorNome: corretor.corretorNome,
-      corretorFoto: corretor.corretorFoto,
-      ...totais,
-    };
-  }));
-  
-  // Ordenar por pontuação (maior para menor)
+    }), { totalLigacoes: 0, totalAgendamentos: 0, totalVisitas: 0, totalDocumentacoes: 0, totalContratos: 0, totalVgv: 0, totalPontos: 0 });
+    return { corretorId: corretor.corretorId, corretorNome: corretor.corretorNome, corretorFoto: corretor.corretorFoto, ...totais };
+  });
+
   return ranking.sort((a, b) => b.totalPontos - a.totalPontos);
 }
 
@@ -5407,6 +5393,8 @@ export async function getLeadsNaLixeira(page: number = 1, limit: number = 50) {
   
   const offset = (page - 1) * limit;
   
+  const corretorAlias = aliasedTable(users, "corretor_anterior");
+
   const [leadsResult, countResult] = await Promise.all([
     db.select({
       id: leads.id,
@@ -5418,49 +5406,25 @@ export async function getLeadsNaLixeira(page: number = 1, limit: number = 50) {
       motivoPerdido: leads.motivoPerdido,
       dataMovidoLixeira: leads.dataMovidoLixeira,
       corretorAnteriorId: leads.corretorAnteriorId,
+      corretorAnteriorNome: corretorAlias.name,
       projectId: leads.projectId,
+      projectNome: projects.nome,
       createdAt: leads.createdAt,
     })
       .from(leads)
+      .leftJoin(corretorAlias, eq(leads.corretorAnteriorId, corretorAlias.id))
+      .leftJoin(projects, eq(leads.projectId, projects.id))
       .where(eq(leads.naLixeira, true))
       .orderBy(desc(leads.dataMovidoLixeira))
       .limit(limit)
       .offset(offset),
     db.select({ count: sql<number>`count(*)` })
       .from(leads)
-      .where(eq(leads.naLixeira, true))
+      .where(eq(leads.naLixeira, true)),
   ]);
-  
-  // Buscar nomes dos corretores anteriores e projetos
-  const leadsComInfo = await Promise.all(leadsResult.map(async (lead) => {
-    let corretorAnteriorNome = null;
-    let projectNome = null;
-    
-    if (lead.corretorAnteriorId) {
-      const corretor = await db.select({ name: users.name })
-        .from(users)
-        .where(eq(users.id, lead.corretorAnteriorId))
-        .limit(1);
-      corretorAnteriorNome = corretor[0]?.name || null;
-    }
-    
-    if (lead.projectId) {
-      const project = await db.select({ nome: projects.nome })
-        .from(projects)
-        .where(eq(projects.id, lead.projectId))
-        .limit(1);
-      projectNome = project[0]?.nome || null;
-    }
-    
-    return {
-      ...lead,
-      corretorAnteriorNome,
-      projectNome,
-    };
-  }));
-  
+
   return {
-    leads: leadsComInfo,
+    leads: leadsResult,
     total: Number(countResult[0]?.count || 0),
     page,
     limit,
@@ -5517,7 +5481,7 @@ export async function getLeadsParaExportar(filters?: ExportFilters) {
     conditions.push(eq(leads.naLixeira, filters.naLixeira));
   }
   
-  const result = await db.select({
+  const leadsComInfo = await db.select({
     id: leads.id,
     nome: leads.nome,
     email: leads.email,
@@ -5536,40 +5500,16 @@ export async function getLeadsParaExportar(filters?: ExportFilters) {
     naLixeira: leads.naLixeira,
     dataMovidoLixeira: leads.dataMovidoLixeira,
     corretorId: leads.corretorId,
+    corretorNome: users.name,
     projectId: leads.projectId,
+    projectNome: projects.nome,
   })
     .from(leads)
+    .leftJoin(users, eq(leads.corretorId, users.id))
+    .leftJoin(projects, eq(leads.projectId, projects.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(leads.createdAt));
-  
-  // Buscar nomes de corretores e projetos
-  const leadsComInfo = await Promise.all(result.map(async (lead) => {
-    let corretorNome = null;
-    let projectNome = null;
-    
-    if (lead.corretorId) {
-      const corretor = await db.select({ name: users.name })
-        .from(users)
-        .where(eq(users.id, lead.corretorId))
-        .limit(1);
-      corretorNome = corretor[0]?.name || null;
-    }
-    
-    if (lead.projectId) {
-      const project = await db.select({ nome: projects.nome })
-        .from(projects)
-        .where(eq(projects.id, lead.projectId))
-        .limit(1);
-      projectNome = project[0]?.nome || null;
-    }
-    
-    return {
-      ...lead,
-      corretorNome,
-      projectNome,
-    };
-  }));
-  
+
   return leadsComInfo;
 }
 
@@ -6546,10 +6486,11 @@ export async function createAgendamento(data: {
   dataHoraAgendamento.setHours(hora || 9, minuto || 0, 0, 0);
   
   if (statusAtualIdx < agendadoIdx) {
-    // Atualizar status e proximoFollowup para aparecer em Tarefas do Dia
+    // Atualizar status e proximoFollowup, passando observação para o histórico via _observacaoStatus
     await updateLead(data.leadId, { 
       status: 'agendado',
-      proximoFollowup: dataHoraAgendamento
+      proximoFollowup: dataHoraAgendamento,
+      _observacaoStatus: 'Status atualizado automaticamente ao criar agendamento',
     });
   } else {
     // Apenas atualizar proximoFollowup para aparecer em Tarefas do Dia
@@ -6643,13 +6584,9 @@ export async function updateAgendamentoStatus(
   if (status === 'realizado') {
     const lead = await getLeadById(agendamento.leadId);
     if (lead && lead.status !== 'visita_realizada') {
-      await updateLead(agendamento.leadId, { status: 'visita_realizada' });
-      await registrarAlteracaoStatus({
-        leadId: agendamento.leadId,
-        corretorId: corretorId || agendamento.corretorId,
-        statusAnterior: lead.status,
-        statusNovo: 'visita_realizada',
-        observacoes: `Status alterado automaticamente ao marcar agendamento como realizado`
+      await updateLead(agendamento.leadId, {
+        status: 'visita_realizada',
+        _observacaoStatus: 'Status alterado automaticamente ao marcar agendamento como realizado',
       });
     }
   }
@@ -7850,6 +7787,46 @@ export async function createFaqChatbot(data: InsertFaqChatbot): Promise<FaqChatb
 }
 
 /**
+ * Atualizar FAQ
+ */
+export async function updateFaqChatbot(id: number, data: Partial<InsertFaqChatbot>): Promise<FaqChatbot | null> {
+  const db = await getDb();
+  if (!db) return null;
+  await db.update(faqChatbot).set(data).where(eq(faqChatbot.id, id));
+  const updated = await db.select().from(faqChatbot).where(eq(faqChatbot.id, id)).limit(1);
+  return updated[0] || null;
+}
+/**
+ * Deletar FAQ (soft delete via ativo=false)
+ */
+export async function deleteFaqChatbot(id: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  await db.update(faqChatbot).set({ ativo: false }).where(eq(faqChatbot.id, id));
+  return true;
+}
+/**
+ * Buscar FAQs por texto (pergunta, resposta ou palavras-chave)
+ */
+export async function searchFaqChatbot(query: string): Promise<FaqChatbot[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select()
+    .from(faqChatbot)
+    .where(
+      and(
+        eq(faqChatbot.ativo, true),
+        or(
+          sql`${faqChatbot.pergunta} LIKE ${'%' + query + '%'}`,
+          sql`${faqChatbot.resposta} LIKE ${'%' + query + '%'}`,
+          sql`${faqChatbot.palavrasChave} LIKE ${'%' + query + '%'}`
+        )!
+      )
+    )
+    .orderBy(desc(faqChatbot.prioridade))
+    .limit(10);
+}
+/**
  * Converter conversa em lead
  */
 export async function converterConversaEmLead(sessionId: string, corretorId?: number): Promise<Lead | null> {
@@ -8501,6 +8478,7 @@ export async function getTotalFollowUpsDoDia(corretorId: number, hojeParam?: Dat
     dataFollowUp: followUps.dataFollowUp,
     dataRegistro: followUps.dataRegistro,
     resultado: followUps.resultado,
+    ultimaTentativa: followUps.ultimaTentativa,
     status: followUps.status,
   })
     .from(followUps)
@@ -8515,6 +8493,47 @@ export async function getTotalFollowUpsDoDia(corretorId: number, hojeParam?: Dat
     ));
 }
 
+
+/** Bulk version: returns all pending follow-ups for a list of corretores */
+export async function getTotalFollowUpsDoDiaBulk(
+  corretorIds: number[],
+  hojeParam?: Date,
+): Promise<Map<number, Awaited<ReturnType<typeof getTotalFollowUpsDoDia>>>> {
+  const db = await getDb();
+  if (!db || corretorIds.length === 0) return new Map();
+
+  const { fimDoDiaHoje, inicioDoDiaHoje } = await import('./timezone');
+  const inicioDeHoje = hojeParam || inicioDoDiaHoje();
+  const fimDeHoje = fimDoDiaHoje();
+
+  const rows = await db.select({
+    id: followUps.id,
+    leadId: followUps.leadId,
+    corretorId: followUps.corretorId,
+    dataFollowUp: followUps.dataFollowUp,
+    dataRegistro: followUps.dataRegistro,
+    resultado: followUps.resultado,
+    ultimaTentativa: followUps.ultimaTentativa,
+    status: followUps.status,
+  })
+    .from(followUps)
+    .leftJoin(leads, eq(followUps.leadId, leads.id))
+    .where(and(
+      inArray(followUps.corretorId, corretorIds),
+      eq(followUps.status, "pendente"),
+      gte(followUps.dataFollowUp, inicioDeHoje),
+      lte(followUps.dataFollowUp, fimDeHoje),
+      eq(leads.status, "em_atendimento"),
+    ));
+
+  const map = new Map<number, typeof rows>();
+  for (const row of rows) {
+    if (!row.corretorId) continue;
+    if (!map.has(row.corretorId)) map.set(row.corretorId, []);
+    map.get(row.corretorId)!.push(row);
+  }
+  return map;
+}
 
 /**
  * Cria ou atualiza follow-up quando lead muda para "Em Atendimento"
@@ -9319,13 +9338,11 @@ export async function cancelarFollowUpsPendentes(leadId: number) {
     const lead = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
     
     if (!lead[0]) {
-      console.log(`[cancelarFollowUpsPendentes] Lead ${leadId} não encontrado`);
       return 0;
     }
     
     // Se lead está "em_atendimento", não cancela follow-ups
     if (lead[0].status === 'em_atendimento') {
-      console.log(`[cancelarFollowUpsPendentes] Lead ${leadId} está em atendimento, mantendo follow-ups`);
       return 0;
     }
     
@@ -9341,7 +9358,6 @@ export async function cancelarFollowUpsPendentes(leadId: number) {
         eq(followUps.status, 'pendente')
       ));
     
-    console.log(`[cancelarFollowUpsPendentes] Lead ${leadId}: ${resultado.rowsAffected || 0} follow-ups cancelados`);
     return resultado.rowsAffected || 0;
     
   } catch (error) {
@@ -9377,7 +9393,6 @@ export async function cancelarFollowUpsPorTransferencia(leadId: number, corretor
       ));
 
     const cancelados = resultado.rowsAffected || 0;
-    console.log(`[cancelarFollowUpsPorTransferencia] Lead ${leadId}: ${cancelados} follow-ups do corretor ${corretorAnteriorId} cancelados`);
     return cancelados;
   } catch (error) {
     console.error('[cancelarFollowUpsPorTransferencia] Erro:', error);
@@ -9396,7 +9411,6 @@ export async function limparFollowUpsOrfaos() {
   if (!db) return { total: 0, cancelados: 0 };
   
   try {
-    console.log('[limparFollowUpsOrfaos] Iniciando limpeza de follow-ups órfãos...');
     
     // Buscar todos os follow-ups pendentes com seus leads
     const followUpsPendentes = await db
@@ -9409,17 +9423,14 @@ export async function limparFollowUpsOrfaos() {
       .leftJoin(leads, eq(followUps.leadId, leads.id))
       .where(eq(followUps.status, 'pendente'));
     
-    console.log(`[limparFollowUpsOrfaos] Encontrados ${followUpsPendentes.length} follow-ups pendentes`);
     
     // Filtrar follow-ups de leads que não estão "em_atendimento"
     const orfaos = followUpsPendentes.filter(f => f.leadStatus !== 'em_atendimento');
     
     if (orfaos.length === 0) {
-      console.log('[limparFollowUpsOrfaos] Nenhum follow-up órfão encontrado');
       return { total: followUpsPendentes.length, cancelados: 0 };
     }
     
-    console.log(`[limparFollowUpsOrfaos] Encontrados ${orfaos.length} follow-ups órfãos para cancelar`);
     
     // Cancelar cada follow-up órfão
     let cancelados = 0;
@@ -9439,7 +9450,6 @@ export async function limparFollowUpsOrfaos() {
       }
     }
     
-    console.log(`[limparFollowUpsOrfaos] Limpeza concluída: ${cancelados} follow-ups cancelados`);
     
     return {
       total: followUpsPendentes.length,
@@ -9559,7 +9569,6 @@ async function garantirAtividadeDiariaExiste(corretorId: number, data: Date) {
       contratosFechados: 0,
       pontuacao: 0,
     });
-    console.log(`[garantirAtividadeDiariaExiste] Criado registro para corretor ${corretorId} na data ${data.toISOString().split('T')[0]}`);
   }
 }
 
@@ -9639,7 +9648,6 @@ export async function sincronizarInteracoesDoDia() {
     await calcularPontuacaoDiaria(corretorId);
   }
   
-  console.log(`[Sync] Sincronizadas ${interacoesHoje.length} interações de ${corretoresMap.size} corretores`);
 }
 
 /**
@@ -9693,7 +9701,6 @@ export async function sincronizarVisitasDoDia() {
     await calcularPontuacaoDiaria(visita.corretorId);
   }
   
-  console.log(`[Sync] Sincronizadas ${visitasHoje.length} visitas`);
 }
 
 /**
@@ -9747,7 +9754,6 @@ export async function sincronizarDocumentacoesDoDia() {
     await calcularPontuacaoDiaria(doc.corretorId);
   }
   
-  console.log(`[Sync] Sincronizadas ${documentacoesHoje.length} documentações`);
 }
 
 /**
@@ -9801,7 +9807,6 @@ export async function sincronizarAnalisesCreditoDoDia() {
     await calcularPontuacaoDiaria(analise.corretorId);
   }
   
-  console.log(`[Sync] Sincronizadas ${analisesHoje.length} análises de crédito`);
 }
 
 /**
@@ -9858,7 +9863,6 @@ export async function sincronizarContratosDoDia() {
     await calcularPontuacaoDiaria(contrato.corretorId);
   }
   
-  console.log(`[Sync] Sincronizados ${contratosHoje.length} contratos`);
 }
 
 /**
@@ -9866,7 +9870,6 @@ export async function sincronizarContratosDoDia() {
  * Executa todas as sincronizações em sequência
  */
 export async function sincronizarTodasMetricasDoDia() {
-  console.log('[Sync] Iniciando sincronização de todas as métricas...');
   
   try {
     await sincronizarInteracoesDoDia();
@@ -9876,7 +9879,6 @@ export async function sincronizarTodasMetricasDoDia() {
     await sincronizarAnalisesCreditoDoDia();
     await sincronizarContratosDoDia();
     
-    console.log('[Sync] Sincronização completa!');
   } catch (error) {
     console.error('[Sync] Erro na sincronização:', error);
   }
@@ -9988,16 +9990,23 @@ export async function upsertMetaGlobal(mes: number, ano: number, data: {
   const db = await getDb();
   if (!db) return null;
 
-  const existing = await getMetaGlobal(mes, ano);
+    const existing = await getMetaGlobal(mes, ano);
   if (existing) {
-    await db.update(metasGlobais)
-      .set(data)
-      .where(eq(metasGlobais.id, existing.id));
-    return { ...existing, ...data };
+    // Só faz update se há campos a atualizar
+    const hasData = Object.keys(data).length > 0;
+    if (hasData) {
+      await db.update(metasGlobais)
+        .set(data)
+        .where(eq(metasGlobais.id, existing.id));
+      // Buscar o registro atualizado para retornar valores com formatação do banco (ex: decimal '100000000.00')
+      return await getMetaGlobal(mes, ano);
+    }
+    return existing;
   }
-
   const result = await db.insert(metasGlobais).values({ mes, ano, ...data });
-  return { id: Number((result as any)[0]?.insertId ?? 0), mes, ano, ...data };
+  // Buscar o registro recém criado para retornar todos os campos com defaults
+  const novo = await getMetaGlobal(mes, ano);
+  return novo ?? { id: Number((result as any)[0]?.insertId ?? 0), mes, ano, ...data };
 }
 
 /**
@@ -10047,7 +10056,7 @@ export async function getDashboardPerformance(mes: number, ano: number, equipeId
   if (idsAtivos.length === 0) {
     return {
       metaGlobal,
-      resumo: { totalVGV: 0, totalContratos: 0, totalLeads: 0, totalAgendamentos: 0, totalVisitas: 0, metaVGV: 0, percentualAtingimento: 0, gapMeta: 0, totalCorretores: 0 },
+      resumo: { totalVGV: 0, totalContratos: 0, totalLeads: 0, totalAgendamentos: 0, totalVisitas: 0, totalDistratos: 0, vgvDistratos: 0, vgvLiquido: 0, metaVGV: 0, percentualAtingimento: 0, gapMeta: 0, totalCorretores: 0 },
       corretores: [],
     };
   }
@@ -10086,16 +10095,42 @@ export async function getDashboardPerformance(mes: number, ano: number, equipeId
     ))
     .groupBy(leads.corretorId, leads.status);
 
-  const leadsMap = new Map<number, { total: number; agendamentos: number; visitas: number }>();
+  const leadsMap = new Map<number, { total: number; visitas: number }>();
   for (const row of leadsPorCorretorStatus) {
     const cid = row.corretorId!;
-    if (!leadsMap.has(cid)) leadsMap.set(cid, { total: 0, agendamentos: 0, visitas: 0 });
+    if (!leadsMap.has(cid)) leadsMap.set(cid, { total: 0, visitas: 0 });
     const entry = leadsMap.get(cid)!;
     const cnt = Number(row.count);
     entry.total += cnt;
-    if (row.status === 'agendado') entry.agendamentos = cnt;
     if (row.status === 'visita_realizada') entry.visitas = cnt;
   }
+
+  // Agendamentos reais (tabela agendamentos, não status do lead) — corrige funil distorcido
+  const agendamentosReaisRows = await db.select({
+    total: sql<number>`COUNT(DISTINCT ${agendamentos.leadId})`,
+  })
+    .from(agendamentos)
+    .where(and(
+      inArray(agendamentos.corretorId, idsAtivos),
+      gte(agendamentos.createdAt, dataInicio),
+      lte(agendamentos.createdAt, dataFim)
+    ));
+  const totalAgendamentosReais = Number(agendamentosReaisRows[0]?.total || 0);
+
+  // Distratos do período — para VGV Líquido
+  const distatosRows = await db.select({
+    total: sql<number>`COUNT(*)`,
+    vgv: sql<number>`COALESCE(SUM(${contratos.valorVenda}), 0)`,
+  })
+    .from(contratos)
+    .where(and(
+      inArray(contratos.corretorId, idsAtivos),
+      sql`${contratos.distrato} = 1`,
+      gte(contratos.dataDistrato, dataInicio),
+      lte(contratos.dataDistrato, dataFim)
+    ));
+  const totalDistratos = Number(distatosRows[0]?.total || 0);
+  const vgvDistratos = Number(distatosRows[0]?.vgv || 0);
 
   // Metas individuais — 1 query
   const metasRows = await db.select()
@@ -10113,19 +10148,17 @@ export async function getDashboardPerformance(mes: number, ano: number, equipeId
   let totalVGV = 0;
   let totalContratos = 0;
   let totalLeads = 0;
-  let totalAgendamentos = 0;
   let totalVisitas = 0;
 
   for (const corretor of corretoresResult) {
     if (corretor.situacao === 'inativo') continue;
     const vgvInfo = vgvMap.get(corretor.id) ?? { vgv: 0, contratos: 0 };
-    const leadsInfo = leadsMap.get(corretor.id) ?? { total: 0, agendamentos: 0, visitas: 0 };
+    const leadsInfo = leadsMap.get(corretor.id) ?? { total: 0, visitas: 0 };
     const meta = metasMap.get(corretor.id);
 
     totalVGV += vgvInfo.vgv;
     totalContratos += vgvInfo.contratos;
     totalLeads += leadsInfo.total;
-    totalAgendamentos += leadsInfo.agendamentos;
     totalVisitas += leadsInfo.visitas;
 
     corretoresData.push({
@@ -10136,7 +10169,6 @@ export async function getDashboardPerformance(mes: number, ano: number, equipeId
       vgv: vgvInfo.vgv,
       contratos: vgvInfo.contratos,
       leads: leadsInfo.total,
-      agendamentos: leadsInfo.agendamentos,
       visitas: leadsInfo.visitas,
       metaVGV: meta?.metaVGV || 0,
       metaContratos: meta?.metaContratos || 0,
@@ -10161,8 +10193,11 @@ export async function getDashboardPerformance(mes: number, ano: number, equipeId
       totalVGV,
       totalContratos,
       totalLeads,
-      totalAgendamentos,
+      totalAgendamentos: totalAgendamentosReais,
       totalVisitas,
+      totalDistratos,
+      vgvDistratos,
+      vgvLiquido: totalVGV - vgvDistratos,
       metaVGV: metaVGVGlobal,
       percentualAtingimento,
       gapMeta,
@@ -10613,7 +10648,6 @@ export async function distribuirLeadsSemCorretor(): Promise<{ distribuidos: numb
     .where(isNull(leads.corretorId))
     .orderBy(leads.createdAt);
   
-  console.log(`[Distribuição] Encontrados ${leadsSemCorretor.length} leads sem corretor`);
   
   let distribuidos = 0;
   let erros = 0;
@@ -10634,7 +10668,6 @@ export async function distribuirLeadsSemCorretor(): Promise<{ distribuidos: numb
     }
   }
   
-  console.log(`[Distribuição] Resultado: ${distribuidos} distribuídos, ${semCorretorDisponivel} sem corretor disponível, ${erros} erros`);
   
   return { distribuidos, erros, semCorretorDisponivel };
 }
@@ -11884,6 +11917,7 @@ export async function getLeadsParaBlitz(
       proximoFollowup: leads.proximoFollowup,
       timerAtivo: leads.timerAtivo,
       createdAt: leads.createdAt,
+      updatedAt: leads.updatedAt,
       campanha: leads.campanha,
     })
     .from(leads)
@@ -12286,7 +12320,6 @@ export async function criarLeadDocumentacao(dados: {
     statusAnterior: 'novo',
     statusNovo: 'analise_credito',
   });
-  console.log(`[Webhook Docs] Lead criado automaticamente: id=${leadId}, nome=${dados.nome}, regime=${regimeLabel}, corretorId=${dados.corretorId || 'N/A'}, projectId=${dados.projectId || 'N/A'}`);
   return { id: leadId, nome: dados.nome || 'Cliente (via Formulário)', status: 'analise_credito', criado: true };
 }
 
@@ -12307,7 +12340,6 @@ export async function atualizarLeadParaAnaliseCredito(
 
   const statusAvancados = ['analise_credito', 'contrato_fechado', 'pos_venda'];
   if (statusAvancados.includes(leadAtual.status)) {
-    console.log(`[Webhook Docs] Lead ${leadId} já está em ${leadAtual.status}, pulando`);
     return;
   }
 
@@ -12337,7 +12369,6 @@ export async function atualizarLeadParaAnaliseCredito(
     statusNovo: 'analise_credito',
   });
 
-  console.log(`[Webhook Docs] Lead ${leadId} -> analise_credito (${regimeLabel})`);
 }
 
 
