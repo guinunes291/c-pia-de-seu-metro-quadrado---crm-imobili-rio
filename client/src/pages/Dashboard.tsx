@@ -276,7 +276,7 @@ export default function Dashboard() {
   // Opções base — ajustadas por stage. staleTime: 30s + refetchInterval 5min,
   // pois o cache server-side (60s) absorve as repetições.
   // retry: 2 com backoff exponencial para cold start do TiDB.
-  const gestorBase = { enabled: !authLoading && isGestor, staleTime: 30_000, refetchInterval: 5 * 60 * 1000, retry: 2, retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 10000) } as const;
+  const gestorBase = { enabled: !authLoading && isGestor, staleTime: 20_000, refetchInterval: 60 * 1000, refetchOnWindowFocus: true, retry: 2, retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 10000) } as const;
   const tier2 = { ...gestorBase, enabled: gestorBase.enabled && loadStage >= 2 };
   const tier3 = { ...gestorBase, enabled: gestorBase.enabled && loadStage >= 3 };
   const tier4 = { ...gestorBase, enabled: gestorBase.enabled && loadStage >= 4 };

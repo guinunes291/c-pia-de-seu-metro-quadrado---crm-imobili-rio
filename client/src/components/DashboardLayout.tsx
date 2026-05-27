@@ -486,9 +486,9 @@ export default function DashboardLayout({
 // Componente para badge de notificações
 function NotificationBadge() {
   const { data: count } = trpc.notifications.unreadCount.useQuery(undefined, {
-    refetchInterval: 5 * 60 * 1000, // 5 minutos (reduzido de 60s — badge de notificações não precisa de polling agressivo)
+    refetchInterval: 60 * 1000, // 1 minuto — badge de notificações
     refetchOnWindowFocus: true,
-    staleTime: 2 * 60 * 1000,
+    staleTime: 30 * 1000,
   });
   
   if (!count || count === 0) return null;
@@ -546,8 +546,8 @@ function DashboardContent({
   // SSE invalida a query instantaneamente; 2min é fallback para quando a conexão cai (reduzido de 30s — economia de Cloud)
   const { data: leadsPrioritarios } = trpc.dashboard.leadsPrioritarios.useQuery(undefined, {
     enabled: user?.role === 'corretor',
-    refetchInterval: 2 * 60 * 1000, // 2 minutos
-    staleTime: 30 * 1000,
+    refetchInterval: 30 * 1000, // 30s — popup urgente do corretor precisa ser em tempo real
+    staleTime: 15 * 1000,
   });
   const totalAcoesLeads = (leadsPrioritarios?.followUpsVencidos?.length ?? 0) +
     (leadsPrioritarios?.leadsQuentes?.length ?? 0) +
