@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, index, json, date, decimal } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, datetime, varchar, boolean, index, json, date, decimal } from "drizzle-orm/mysql-core";
 
 /**
  * Schema do CRM Imobiliário - Seu Metro Quadrado
@@ -30,7 +30,7 @@ export const users = mysqlTable("users", {
   
   // Dados pessoais do corretor
   cpf: varchar("cpf", { length: 14 }), // 000.000.000-00
-  dataNascimento: timestamp("dataNascimento"),
+  dataNascimento: datetime("dataNascimento"),
   
   // Dados profissionais
   creci: varchar("creci", { length: 20 }), // Número do CRECI se houver
