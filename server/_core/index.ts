@@ -181,6 +181,14 @@ async function startServer() {
       console.error("[Job] Erro ao inicializar job de backup Google Sheets:", err);
     });
     
+    // Inicializar job de limpeza de logs (distribution_log, notifications - diário às 3h)
+    import("../logCleanupJob").then(({ agendarLimpezaDeLogs }) => {
+      agendarLimpezaDeLogs();
+      console.log("[Job] Limpeza automática de logs inicializada (diária às 3h)");
+    }).catch(err => {
+      console.error("[Job] Erro ao inicializar job de limpeza de logs:", err);
+    });
+
     // [DESATIVADO] DRE Sync — apenas manual (acionado via procedure admin)
     // [DESATIVADO] BI Sync — excluído por decisão do usuário para reduzir custos
     

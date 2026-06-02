@@ -420,6 +420,9 @@ export async function distribuirLeadsEmLote(
   return results;
 }
 
+// Cooldown de redistribuição: leads distribuídos nas últimas 8h não são redistribuídos
+const COOLDOWN_REDISTRIBUICAO_HORAS = 8;
+
 /**
  * Distribui todos os leads não atribuídos em lotes
  * Regras:
@@ -427,6 +430,7 @@ export async function distribuirLeadsEmLote(
  * - Apenas para corretores presentes
  * - Apenas para corretores com taxa de trabalho >= 90% ou menos de 40 leads
  * - Limite de 20 leads por ação
+ * - Cooldown de 8h: leads distribuídos recentemente não são redistribuídos
  */
 export async function distribuirTodosLeadsNaoDistribuidos(): Promise<{
   success: number;
@@ -458,6 +462,9 @@ export async function distribuirTodosLeadsNaoDistribuidos(): Promise<{
   }
   const limiteBusca = Math.floor(corretoresElegiveis.length * LEADS_POR_RODADA);
 
+  // Cooldown: não redistribuir leads distribuídos nas últimas 8h
+  const cooldownLimite = new Date(Date.now() - COOLDOWN_REDISTRIBUICAO_HORAS * 60 * 60 * 1000);
+
   if (gestorIds.length > 0) {
     leadsParaDistribuir = await db
       .select()
@@ -467,7 +474,11 @@ export async function distribuirTodosLeadsNaoDistribuidos(): Promise<{
             AND ${leads.status} IN ('novo', 'aguardando_atendimento')
             AND ${leads.naLixeira} = 0
             AND ${leads.transferidoManualmentePorAdmin} = 0
-            AND (${leads.timerAtivo} = 0 OR ${leads.timerAtivo} IS NULL)`
+            AND (${leads.timerAtivo} = 0 OR ${leads.timerAtivo} IS NULL)
+            AND (
+              ${leads.dataDistribuicao} IS NULL
+              OR ${leads.dataDistribuicao} < ${cooldownLimite}
+            )`
       )
       .orderBy(leads.createdAt)
       .limit(limiteBusca);
@@ -480,7 +491,11 @@ export async function distribuirTodosLeadsNaoDistribuidos(): Promise<{
           isNull(leads.corretorId),
           sql`${leads.status} IN ('novo', 'aguardando_atendimento')`,
           eq(leads.naLixeira, false),
-          eq(leads.transferidoManualmentePorAdmin, false)
+          eq(leads.transferidoManualmentePorAdmin, false),
+          sql`(
+            ${leads.dataDistribuicao} IS NULL
+            OR ${leads.dataDistribuicao} < ${cooldownLimite}
+          )`
         )
       )
       .orderBy(leads.createdAt)
