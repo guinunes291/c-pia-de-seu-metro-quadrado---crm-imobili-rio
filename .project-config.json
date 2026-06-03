@@ -14,10 +14,10 @@
   ],
   "git_remote": {
     "repo_url": "s3://vida-prod-gitrepo/webdev-git/310419663032188321/KioE9a9tzwqrRivzMGNay6",
-    "access_key_id": "ASIAZV3A2ECZIA24NKGA",
-    "secret_access_key": "kxvZ9WLz817Z2bncF3akttmK6uYnORWkzwrouVNK",
-    "session_token": "IQoJb3JpZ2luX2VjEGUaCXVzLWVhc3QtMSJHMEUCIQCbpHW0NN8/tS17mlqZYhvfRQgLLgX4ovpKons3CDuzIAIgL4lBh96TxDhYSPFxHUKmqO9bRlDIt3HixhtMzOU8R+Qq9QMILhAEGgw2NjUzODYwOTg4NjYiDO3HYyJWKmjoMGrhmSrSA4XnKZPWWzbWZt3PYDmGxO/Z6jfHt7hDRy0zFSx+Q43R+LxVV3HesHLQq0l+f4zKx1YEhv9I6eqOPUko5Q+LMBRaJqtrol4wf5xY/tu6TXKSpFbVlzGjwD8UgUNWTMxqS2u2Pm7L4fXRsQWk12E8pa6QkN78eJ/Nx8zoAq99i4XEhp/CqbTvFe0ft8vHpzZOOPJt88DbEj7CE76hdb/Rsr18Xk4/n28vK1d4t8ieBkJAHWOni9TvgkutRzp06PR8fJ/YC3P0JpfA/zaqAtJnGoRY7ZmFf6X7oBpajZtirCTvm6SAMLlLWs7UtifeVD+vf6UZWql+qiRcJslfDiDH6ny4s+ti2YkPb767IcVFWhS/ARbV5ng+w2BvG5l2+G62o9xMWSGwPTAeQoGvYzCo4DUWP7204HfAzSMjNIieNDJ0fmFkYilVjbx8nWjM5b40oOHv+7nSWUnPdL1/0npFUjfk/uuFiZnLqeHVzPaHBhEGPMzUovQYfNU1cD16wo/EckOjjb5SFiYXp0mYuahUQE+cyzTDhYq1EiDau31Dx2Cbxv0zyaVQutbg3pKW78UtmLLAa+IBfZnGMbD8r5UkXlxka70M36lAhNNTxKfdQHuKXYgwhf780AY6nQHAhTCP3AD1aBdiowRa7UECRWy2+r4oAT+mPf4CzQXA+roBABE6ISLBwylKrC2utOUm+ZeHyV/QBvvaZotc4V7pBJWi8erLlO471jvWGGv7pQBjJdF7CvIqNazZEYuzcMkqLU2ZAUZSva7qecSt2KQM4bjucypz7D3snAjXig0EpUPftRPUrsGsLhgtHn7wV/aKdtKT6xMmdI0MnJ/d",
-    "expiration": "2026-06-03T08:37:25.000Z"
+    "access_key_id": "ASIAZV3A2ECZDUROY7RA",
+    "secret_access_key": "g2+C8TX/4yy1Q6m8+muW9oe9501vV2Vv1B46DTFa",
+    "session_token": "IQoJb3JpZ2luX2VjEGgaCXVzLWVhc3QtMSJIMEYCIQDl/acugDf1SGQdaaTvjZHrwGJdFNYKn6/4eKPZ/LVlMAIhAJib0QwDqWsrPcA6mloax8K+eBVQmOoyF2t9oKmJul+EKvUDCDAQBBoMNjY1Mzg2MDk4ODY2IgzGrIzhQzetZEcQ9O0q0gP8QtSniaGvrI1PhzONSlY7IN134iSL0+X3TQ8QBCX3Y/Krd562CpWuzhxDtQNcuCZOYmvi7hAanwktYlwONE/+2WdmB4jWYrfuWUXs1Yb20X0qQ3DblcU3CYHMm944cf4gf7yjBTOc0rmsj+/zWM3BcRDKK0CDEiegRqdecmxGrMT26aueJENXfBqa6OAfDDu5HwSGAu24pU5jP2YZTS7tL7SEV8NU369oAmEzAmzILpDpOEm/fmIsa/rFQN5SGFRjtLUVzXhEyeo4w1gBXreP29V7sceA+mkfLhP1Jmkbw/36JP1i4l7AbCPjSEyvnTEYEoz1alKVXnVpYzd1d2NP1ls+f/o/M8IwN2cRm/LZj+/aBlIp6eEEmeN9KGe6eMQzrq+mHx77/aPjXJLknkHD0wHo8aB8HIaA4oBAczvOCFmTqadPaf1jZWl8+giEAoRn6XOaH0ooVbatnuySI5iqRh/2PImlL7O6lO3+1DvT3ge65LdYZTFqNA7M/O3Twj1bZAuaUaKZM2T0pW8w3WiuHjapMKI54hQ5qs77esi22L9IgnzfkQTm+Il9BZqCYFvA4OHPR9+CQgAJD/LLV+X/7EFnU6QMiwlcCfXb7MfGPgQVMOfF/dAGOpwBuEBbNq5GE8zaMAFzsA/E6uXAAFbJOTa194rNTgY9v+e+zx342ukeg6sM3bELZ1v8TPQTGA8aGmxTAnaWXOEmLHgqUwZ5215poLvzEZ8o7IuVcImH/vaSSlYnMpVv7fSTuhD9sW5yguAnqV0pZPHdLj4OgAwg0Y05m5wy1rvzjVGZa+8SKyteSTIQEFCoypsFORT6MbX4oxjGkYdb",
+    "expiration": "2026-06-03T11:10:31.000Z"
   },
   "name": "cópia-de-seu-metro-quadrado---crm-imobiliário",
   "path": "/home/ubuntu/cópia-de-seu-metro-quadrado---crm-imobiliário",

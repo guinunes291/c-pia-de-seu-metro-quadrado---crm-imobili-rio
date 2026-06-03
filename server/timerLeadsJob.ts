@@ -216,6 +216,7 @@ export async function verificarTimerLeads() {
               timestampRecebimento: new Date(),
               timerAtivo: true,
               status: "aguardando_atendimento",
+              dataDistribuicao: new Date(), // Atualizar para acionar cooldown de 8h e evitar redistribuição imediata
               // Manter tipoFilaOrigem inalterado — o lead continua na mesma fila
             })
             .where(eq(leads.id, lead.id));
@@ -290,6 +291,7 @@ export async function verificarTimerLeads() {
               corretorId: null,
               timerAtivo: false,
               status: "aguardando_atendimento",
+              dataDistribuicao: new Date(), // Atualizar para acionar cooldown de 8h e evitar redistribuição imediata
             })
             .where(eq(leads.id, lead.id));
 
