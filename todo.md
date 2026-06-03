@@ -5620,3 +5620,14 @@
 - [x] Frontend: adicionar card "Copa não inicializada" com botão de inicialização
 - [x] Frontend: adicionar card "Avançar Fase" quando todos os confrontos da fase atual têm vencedor
 - [x] Frontend: melhorar painel "Definir Vencedores" - agrupar por fase, esconder placeholders NULL, mostrar bandeiras e contador de progresso
+
+## Redesign Copa SMQ 2026
+- [x] Reescrever CopaSMQPage.tsx com design World Cup style (dark #0a1628, verde #009c3b, amarelo #ffdf00)
+- [x] Header com troféu, título COPA SMQ 2026, período e semana atual
+- [x] Abas: Chaveamento, Pontuação, Premiação, Admin
+- [x] Calendário de semanas com indicador AO VIVO
+- [x] Fase de Grupos com cards por grupo e tabela de pontos
+- [x] Fase Eliminatória: Quartas, Semifinal, Final em 3 colunas
+- [x] Tabela de pontuação geral com ranking
+- [x] Premiação com pódio visual e bônus por fase
+- [x] Painel Admin: inicializar, participantes, sorteio, pontuação manual, vencedores, prêmios
