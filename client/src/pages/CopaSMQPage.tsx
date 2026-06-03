@@ -230,14 +230,15 @@ export default function CopaSMQPage() {
     if (!user?.id) return [];
     const fgId = faseGrupos?.id ?? 1;
     if (isAdmin) {
-      // Admin vê todos os confrontos da fase de grupos
-      return confrontos.filter(c => c.faseId === fgId && (c.corretorAId || c.corretorBId));
+      // Admin vê todos os confrontos da fase de grupos, ordenados por semana
+      return [...confrontos.filter(c => c.faseId === fgId && (c.corretorAId || c.corretorBId))]
+        .sort((a, b) => (a.semanaRef ?? 99) - (b.semanaRef ?? 99));
     }
     const myId = Number(user.id);
-    return confrontos.filter(c =>
+    return [...confrontos.filter(c =>
       c.faseId === fgId &&
       (Number(c.corretorAId) === myId || Number(c.corretorBId) === myId)
-    );
+    )].sort((a, b) => (a.semanaRef ?? 99) - (b.semanaRef ?? 99));
   }, [confrontos, user?.id, faseGrupos, isAdmin]);
 
   function confrontosDaFase(faseId: number) {
