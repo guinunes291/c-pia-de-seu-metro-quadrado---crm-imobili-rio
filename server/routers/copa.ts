@@ -11,6 +11,15 @@ function isAdminOrSuperintendente(role: string) {
 /**
  * Helper: db.execute() com Drizzle + mysql2 retorna [rows, fields].
  * Esta função extrai apenas o array de rows de forma segura.
+ *
+ * Colunas do banco (camelCase):
+ * copa_confrontos:   id, faseId, corretorAId, corretorBId, vencedorId, semanaRef, posicao, createdAt
+ * copa_corretores:   id, corretorId, selecaoId, ativo, createdAt
+ * copa_fases:        id, nome, tipo, ordem, semanaInicio, semanaFim, createdAt
+ * copa_selecoes:     id, nome, bandeira, corPrimaria, createdAt
+ * copa_pontuacoes:   id, corretorId, semana, agendamentos, visitas, documentacao, vendas, total, createdAt, updatedAt
+ * copa_config_pontos:  id, chave, label, pontos, updated_at
+ * copa_config_premios: id, posicao, descricao, valor, icone, ordem, updated_at
  */
 function getRows(result: unknown): Record<string, unknown>[] {
   if (Array.isArray(result) && result.length >= 1 && Array.isArray(result[0])) {
@@ -33,16 +42,16 @@ export const copaRouter = router({
       db.execute(sql`
         SELECT cc.*, u.name as nome, s.nome as selecaoNome, s.bandeira as selecaoBandeira
         FROM copa_corretores cc
-        JOIN users u ON u.id = cc.corretor_id
-        LEFT JOIN copa_selecoes s ON s.id = cc.selecao_id
+        JOIN users u ON u.id = cc.corretorId
+        LEFT JOIN copa_selecoes s ON s.id = cc.selecaoId
         ORDER BY u.name
       `),
     ]);
 
     const mapCorretor = (row: Record<string, unknown>) => ({
-      corretorId: Number(row.corretor_id),
+      corretorId: Number(row.corretorId),
       nome: String(row.nome ?? ""),
-      selecaoId: row.selecao_id ? Number(row.selecao_id) : null,
+      selecaoId: row.selecaoId ? Number(row.selecaoId) : null,
       selecaoNome: row.selecaoNome ? String(row.selecaoNome) : null,
       selecaoBandeira: row.selecaoBandeira ? String(row.selecaoBandeira) : null,
     });
@@ -57,17 +66,17 @@ export const copaRouter = router({
       id: Number(row.id),
       nome: String(row.nome ?? ""),
       ordem: Number(row.ordem ?? 0),
-      semanaInicio: row.semana_inicio ? String(row.semana_inicio) : null,
-      semanaFim: row.semana_fim ? String(row.semana_fim) : null,
+      semanaInicio: row.semanaInicio ? String(row.semanaInicio) : null,
+      semanaFim: row.semanaFim ? String(row.semanaFim) : null,
     });
 
     const mapConfronto = (row: Record<string, unknown>) => ({
       id: Number(row.id),
-      faseId: Number(row.fase_id),
-      corretorAId: row.corretor_a_id ? Number(row.corretor_a_id) : null,
-      corretorBId: row.corretor_b_id ? Number(row.corretor_b_id) : null,
-      vencedorId: row.vencedor_id ? Number(row.vencedor_id) : null,
-      semanaRef: row.semana_ref ? Number(row.semana_ref) : null,
+      faseId: Number(row.faseId),
+      corretorAId: row.corretorAId ? Number(row.corretorAId) : null,
+      corretorBId: row.corretorBId ? Number(row.corretorBId) : null,
+      vencedorId: row.vencedorId ? Number(row.vencedorId) : null,
+      semanaRef: row.semanaRef ? Number(row.semanaRef) : null,
     });
 
     return {
@@ -107,16 +116,16 @@ export const copaRouter = router({
 
     const rankingResult = await db.execute(sql`
       SELECT
-        cc.corretor_id,
+        cc.corretorId,
         u.name as nome,
-        s.nome as selecao_nome,
-        s.bandeira as selecao_bandeira,
-        s.id as selecao_id,
+        s.nome as selecaoNome,
+        s.bandeira as selecaoBandeira,
+        s.id as selecaoId,
 
         COALESCE((
           SELECT COUNT(*)
           FROM agendamentos a
-          WHERE a.corretorId = cc.corretor_id
+          WHERE a.corretorId = cc.corretorId
             AND a.createdAt >= ${COPA_INICIO}
             AND a.createdAt <= ${COPA_FIM}
         ), 0) as crm_agendamentos,
@@ -124,7 +133,7 @@ export const copaRouter = router({
         COALESCE((
           SELECT COUNT(*)
           FROM lead_status_transitions lst
-          WHERE lst.corretorId = cc.corretor_id
+          WHERE lst.corretorId = cc.corretorId
             AND lst.statusNovo = 'visita_realizada'
             AND lst.createdAt >= ${COPA_INICIO}
             AND lst.createdAt <= ${COPA_FIM}
@@ -133,7 +142,7 @@ export const copaRouter = router({
         COALESCE((
           SELECT COUNT(*)
           FROM lead_status_transitions lst
-          WHERE lst.corretorId = cc.corretor_id
+          WHERE lst.corretorId = cc.corretorId
             AND lst.statusNovo = 'analise_credito'
             AND lst.createdAt >= ${COPA_INICIO}
             AND lst.createdAt <= ${COPA_FIM}
@@ -142,20 +151,20 @@ export const copaRouter = router({
         COALESCE((
           SELECT COUNT(*)
           FROM lead_status_transitions lst
-          WHERE lst.corretorId = cc.corretor_id
+          WHERE lst.corretorId = cc.corretorId
             AND lst.statusNovo = 'contrato_fechado'
             AND lst.createdAt >= ${COPA_INICIO}
             AND lst.createdAt <= ${COPA_FIM}
         ), 0) as crm_vendas,
 
-        COALESCE((SELECT SUM(cp.agendamentos) FROM copa_pontuacoes cp WHERE cp.corretor_id = cc.corretor_id), 0) as manual_agendamentos,
-        COALESCE((SELECT SUM(cp.visitas) FROM copa_pontuacoes cp WHERE cp.corretor_id = cc.corretor_id), 0) as manual_visitas,
-        COALESCE((SELECT SUM(cp.documentacao) FROM copa_pontuacoes cp WHERE cp.corretor_id = cc.corretor_id), 0) as manual_documentacao,
-        COALESCE((SELECT SUM(cp.vendas) FROM copa_pontuacoes cp WHERE cp.corretor_id = cc.corretor_id), 0) as manual_vendas
+        COALESCE((SELECT SUM(cp.agendamentos) FROM copa_pontuacoes cp WHERE cp.corretorId = cc.corretorId), 0) as manual_agendamentos,
+        COALESCE((SELECT SUM(cp.visitas) FROM copa_pontuacoes cp WHERE cp.corretorId = cc.corretorId), 0) as manual_visitas,
+        COALESCE((SELECT SUM(cp.documentacao) FROM copa_pontuacoes cp WHERE cp.corretorId = cc.corretorId), 0) as manual_documentacao,
+        COALESCE((SELECT SUM(cp.vendas) FROM copa_pontuacoes cp WHERE cp.corretorId = cc.corretorId), 0) as manual_vendas
 
       FROM copa_corretores cc
-      JOIN users u ON u.id = cc.corretor_id
-      LEFT JOIN copa_selecoes s ON s.id = cc.selecao_id
+      JOIN users u ON u.id = cc.corretorId
+      LEFT JOIN copa_selecoes s ON s.id = cc.selecaoId
       ORDER BY u.name ASC
     `);
 
@@ -172,10 +181,10 @@ export const copaRouter = router({
 
       return {
         posicao: 0,
-        corretorId: Number(r.corretor_id),
+        corretorId: Number(r.corretorId),
         nome: String(r.nome ?? ""),
-        selecao: r.selecao_id
-          ? { id: Number(r.selecao_id), nome: String(r.selecao_nome ?? ""), bandeira: String(r.selecao_bandeira ?? "🏳️") }
+        selecao: r.selecaoId
+          ? { id: Number(r.selecaoId), nome: String(r.selecaoNome ?? ""), bandeira: String(r.selecaoBandeira ?? "🏳️") }
           : null,
         totalAgendamentos,
         totalVisitas,
@@ -230,15 +239,15 @@ export const copaRouter = router({
         input.vendas * (configMap["vendas"] ?? 150);
 
       await db.execute(sql`
-        INSERT INTO copa_pontuacoes (corretor_id, semana, agendamentos, visitas, documentacao, vendas, total_pontos, updated_at)
+        INSERT INTO copa_pontuacoes (corretorId, semana, agendamentos, visitas, documentacao, vendas, total, updatedAt)
         VALUES (${input.corretorId}, ${input.semana}, ${input.agendamentos}, ${input.visitas}, ${input.documentacao}, ${input.vendas}, ${total}, NOW())
         ON DUPLICATE KEY UPDATE
           agendamentos = VALUES(agendamentos),
           visitas = VALUES(visitas),
           documentacao = VALUES(documentacao),
           vendas = VALUES(vendas),
-          total_pontos = VALUES(total_pontos),
-          updated_at = NOW()
+          total = VALUES(total),
+          updatedAt = NOW()
       `);
 
       return { success: true, total };
@@ -303,7 +312,7 @@ export const copaRouter = router({
       SELECT u.id, u.name as nome, u.role,
         CASE WHEN cc.id IS NOT NULL THEN 1 ELSE 0 END as na_copa
       FROM users u
-      LEFT JOIN copa_corretores cc ON cc.corretor_id = u.id
+      LEFT JOIN copa_corretores cc ON cc.corretorId = u.id
       WHERE u.role IN ('corretor', 'gestor', 'superintendente', 'admin')
       ORDER BY u.name
     `);
@@ -325,7 +334,7 @@ export const copaRouter = router({
       await db.execute(sql`DELETE FROM copa_corretores`);
       for (const id of input.corretorIds) {
         await db.execute(sql`
-          INSERT INTO copa_corretores (corretor_id, selecao_id, ativo) VALUES (${id}, NULL, 1)
+          INSERT INTO copa_corretores (corretorId, selecaoId, ativo) VALUES (${id}, NULL, 1)
         `);
       }
       return { success: true, total: input.corretorIds.length };
@@ -341,10 +350,10 @@ export const copaRouter = router({
 
       const db = await getDb();
 
-      const participantesResult = await db.execute(sql`SELECT corretor_id FROM copa_corretores ORDER BY RAND()`);
+      const participantesResult = await db.execute(sql`SELECT corretorId FROM copa_corretores ORDER BY RAND()`);
       const selecoesResult = await db.execute(sql`SELECT id FROM copa_selecoes ORDER BY RAND()`);
 
-      const participantes = getRows(participantesResult).map((r) => Number(r.corretor_id));
+      const participantes = getRows(participantesResult).map((r) => Number(r.corretorId));
       const selecoes = getRows(selecoesResult).map((r) => Number(r.id));
 
       if (participantes.length === 0) {
@@ -354,7 +363,7 @@ export const copaRouter = router({
       // Atribuir seleções aleatórias
       for (let i = 0; i < participantes.length; i++) {
         const selecaoId = selecoes[i % selecoes.length];
-        await db.execute(sql`UPDATE copa_corretores SET selecao_id = ${selecaoId} WHERE corretor_id = ${participantes[i]}`);
+        await db.execute(sql`UPDATE copa_corretores SET selecaoId = ${selecaoId} WHERE corretorId = ${participantes[i]}`);
       }
 
       // Recriar confrontos da fase de grupos
@@ -370,7 +379,7 @@ export const copaRouter = router({
         const b = participantes[i + 1] ?? null;
         if (b !== null) {
           await db.execute(sql`
-            INSERT INTO copa_confrontos (fase_id, corretor_a_id, corretor_b_id, semana_ref, posicao)
+            INSERT INTO copa_confrontos (faseId, corretorAId, corretorBId, semanaRef, posicao)
             VALUES (${faseGruposId}, ${a}, ${b}, 1, ${posicao})
           `);
           posicao++;
@@ -391,7 +400,7 @@ export const copaRouter = router({
       }
       const db = await getDb();
       await db.execute(sql`
-        UPDATE copa_confrontos SET vencedor_id = ${input.vencedorId} WHERE id = ${input.confrontoId}
+        UPDATE copa_confrontos SET vencedorId = ${input.vencedorId} WHERE id = ${input.confrontoId}
       `);
       return { success: true };
     }),
@@ -403,25 +412,25 @@ export const copaRouter = router({
     }
     const db = await getDb();
     const result = await db.execute(sql`
-      SELECT cp.id, cp.corretor_id, cp.semana, cp.agendamentos, cp.visitas,
-             cp.documentacao, cp.vendas, cp.total_pontos, cp.updated_at,
-             u.name as nome_corretor
+      SELECT cp.id, cp.corretorId, cp.semana, cp.agendamentos, cp.visitas,
+             cp.documentacao, cp.vendas, cp.total, cp.updatedAt,
+             u.name as nomeCorretor
       FROM copa_pontuacoes cp
-      JOIN users u ON u.id = cp.corretor_id
-      ORDER BY cp.updated_at DESC
+      JOIN users u ON u.id = cp.corretorId
+      ORDER BY cp.updatedAt DESC
       LIMIT 50
     `);
     return getRows(result).map((r) => ({
       id: Number(r.id),
-      corretorId: Number(r.corretor_id),
-      nomeCorretor: String(r.nome_corretor ?? ""),
+      corretorId: Number(r.corretorId),
+      nomeCorretor: String(r.nomeCorretor ?? ""),
       semana: Number(r.semana),
       agendamentos: Number(r.agendamentos),
       visitas: Number(r.visitas),
       documentacao: Number(r.documentacao),
       vendas: Number(r.vendas),
-      totalPontos: Number(r.total_pontos),
-      updatedAt: r.updated_at ? String(r.updated_at) : null,
+      totalPontos: Number(r.total),
+      updatedAt: r.updatedAt ? String(r.updatedAt) : null,
     }));
   }),
 
@@ -441,14 +450,14 @@ export const copaRouter = router({
   getMeusPontosSemana: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     const result = await db.execute(sql`
-      SELECT semana, total_pontos
+      SELECT semana, total
       FROM copa_pontuacoes
-      WHERE corretor_id = ${ctx.user.id}
+      WHERE corretorId = ${ctx.user.id}
       ORDER BY semana
     `);
     return getRows(result).map((r) => ({
       semana: Number(r.semana),
-      totalPontos: Number(r.total_pontos),
+      totalPontos: Number(r.total),
     }));
   }),
 
@@ -462,15 +471,15 @@ export const copaRouter = router({
     const faseCount = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_fases`));
     if (Number(faseCount[0]?.c) === 0) {
       const fases = [
-        { nome: "Fase de Grupos", ordem: 1, si: 1, sf: 3 },
-        { nome: "Oitavas de Final", ordem: 2, si: 4, sf: 4 },
-        { nome: "Quartas de Final", ordem: 3, si: 5, sf: 5 },
-        { nome: "Semifinal", ordem: 4, si: 6, sf: 6 },
-        { nome: "Disputa 3º Lugar", ordem: 5, si: 7, sf: 7 },
-        { nome: "Grande Final", ordem: 6, si: 8, sf: 8 },
+        { nome: "Fase de Grupos", tipo: "grupos", ordem: 1, si: "03/06", sf: "21/06" },
+        { nome: "Quartas de Final", tipo: "quartas", ordem: 2, si: "24/06", sf: "28/06" },
+        { nome: "Repescagem", tipo: "repescagem", ordem: 3, si: "24/06", sf: "28/06" },
+        { nome: "Semifinais", tipo: "semifinal", ordem: 4, si: "01/07", sf: "05/07" },
+        { nome: "3º Lugar", tipo: "terceiro", ordem: 5, si: "08/07", sf: "12/07" },
+        { nome: "Grande Final", tipo: "final", ordem: 6, si: "08/07", sf: "12/07" },
       ];
       for (const f of fases) {
-        await db.execute(sql`INSERT INTO copa_fases (nome, ordem, semana_inicio, semana_fim) VALUES (${f.nome}, ${f.ordem}, ${f.si}, ${f.sf})`);
+        await db.execute(sql`INSERT INTO copa_fases (nome, tipo, ordem, semanaInicio, semanaFim) VALUES (${f.nome}, ${f.tipo}, ${f.ordem}, ${f.si}, ${f.sf})`);
       }
     }
 
@@ -478,13 +487,9 @@ export const copaRouter = router({
     if (Number(selCount[0]?.c) === 0) {
       const selecoes: [string, string][] = [
         ["Brasil", "🇧🇷"], ["Argentina", "🇦🇷"], ["França", "🇫🇷"], ["Alemanha", "🇩🇪"],
-        ["Espanha", "🇪🇸"], ["Inglaterra", "🇬🇧"], ["Portugal", "🇵🇹"], ["Holanda", "🇳🇱"],
-        ["Bélgica", "🇧🇪"], ["Itália", "🇮🇹"], ["Croácia", "🇭🇷"], ["Uruguai", "🇺🇾"],
-        ["México", "🇲🇽"], ["EUA", "🇺🇸"], ["Canadá", "🇨🇦"], ["Marrocos", "🇲🇦"],
-        ["Senegal", "🇸🇳"], ["Japão", "🇯🇵"], ["Coreia do Sul", "🇰🇷"], ["Austrália", "🇦🇺"],
-        ["Suíça", "🇨🇭"], ["Dinamarca", "🇩🇰"], ["Polônia", "🇵🇱"], ["Sérvia", "🇷🇸"],
-        ["Colômbia", "🇨🇴"], ["Equador", "🇪🇨"], ["Chile", "🇨🇱"], ["Peru", "🇵🇪"],
-        ["Gana", "🇬🇭"], ["Tunísia", "🇹🇳"], ["Camarões", "🇨🇲"], ["Costa Rica", "🇨🇷"],
+        ["Espanha", "🇪🇸"], ["Portugal", "🇵🇹"], ["Holanda", "🇳🇱"], ["Itália", "🇮🇹"],
+        ["Croácia", "🇭🇷"], ["Japão", "🇯🇵"], ["Marrocos", "🇲🇦"], ["Senegal", "🇸🇳"],
+        ["Bélgica", "🇧🇪"], ["Uruguai", "🇺🇾"],
       ];
       for (const [nome, bandeira] of selecoes) {
         await db.execute(sql`INSERT INTO copa_selecoes (nome, bandeira) VALUES (${nome}, ${bandeira})`);
@@ -531,13 +536,17 @@ export const copaRouter = router({
     const fases = getRows(await db.execute(sql`SELECT id, nome, ordem FROM copa_fases ORDER BY ordem`))
       .map(r => ({ id: Number(r.id), nome: String(r.nome), ordem: Number(r.ordem) }));
 
-    if (fases.length === 0) return { podeAvancar: false, faseAtual: null as null | { id: number; nome: string; total: number; completos: number }, proximaFase: null as null | { id: number; nome: string } };
+    if (fases.length === 0) return {
+      podeAvancar: false,
+      faseAtual: null as null | { id: number; nome: string; total: number; completos: number },
+      proximaFase: null as null | { id: number; nome: string },
+    };
 
     for (const fase of fases) {
       const countRow = getRows(await db.execute(sql`
         SELECT COUNT(*) as total,
-               SUM(CASE WHEN vencedor_id IS NOT NULL THEN 1 ELSE 0 END) as completos
-        FROM copa_confrontos WHERE fase_id = ${fase.id}
+               SUM(CASE WHEN vencedorId IS NOT NULL THEN 1 ELSE 0 END) as completos
+        FROM copa_confrontos WHERE faseId = ${fase.id}
       `));
       const row = countRow[0];
       const total = Number(row?.total ?? 0);
@@ -556,7 +565,7 @@ export const copaRouter = router({
       // Todos completos — verifica se próxima fase tem slots vazios
       const nextFase = fases.find(f => f.ordem === fase.ordem + 1);
       if (nextFase) {
-        const emptyRow = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_confrontos WHERE fase_id = ${nextFase.id} AND corretor_a_id IS NULL`));
+        const emptyRow = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_confrontos WHERE faseId = ${nextFase.id} AND corretorAId IS NULL`));
         const emptyCount = Number(emptyRow[0]?.c ?? 0);
         if (emptyCount > 0) {
           return {
@@ -587,8 +596,8 @@ export const copaRouter = router({
     for (const fase of fases) {
       const countRow = getRows(await db.execute(sql`
         SELECT COUNT(*) as total,
-               SUM(CASE WHEN vencedor_id IS NOT NULL THEN 1 ELSE 0 END) as completos
-        FROM copa_confrontos WHERE fase_id = ${fase.id}
+               SUM(CASE WHEN vencedorId IS NOT NULL THEN 1 ELSE 0 END) as completos
+        FROM copa_confrontos WHERE faseId = ${fase.id}
       `));
       const row = countRow[0];
       const total = Number(row?.total ?? 0);
@@ -597,7 +606,7 @@ export const copaRouter = router({
 
       const nextFase = fases.find(f => f.ordem === fase.ordem + 1);
       if (nextFase) {
-        const emptyRow = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_confrontos WHERE fase_id = ${nextFase.id} AND corretor_a_id IS NULL`));
+        const emptyRow = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_confrontos WHERE faseId = ${nextFase.id} AND corretorAId IS NULL`));
         if (Number(emptyRow[0]?.c ?? 0) > 0) {
           faseAtualId = fase.id;
           faseAtualOrdem = fase.ordem;
@@ -610,28 +619,28 @@ export const copaRouter = router({
       throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhuma fase pronta para avançar" });
     }
 
-    const vencedores = getRows(await db.execute(sql`SELECT vencedor_id FROM copa_confrontos WHERE fase_id = ${faseAtualId} AND vencedor_id IS NOT NULL ORDER BY RAND()`))
-      .map(r => Number(r.vencedor_id));
+    const vencedores = getRows(await db.execute(sql`SELECT vencedorId FROM copa_confrontos WHERE faseId = ${faseAtualId} AND vencedorId IS NOT NULL ORDER BY RAND()`))
+      .map(r => Number(r.vencedorId));
 
     // Semifinal (ordem 4): perdedores → Disputa 3º (ordem 5), vencedores → Final (ordem 6)
     if (faseAtualOrdem === 4) {
       const perdedores = getRows(await db.execute(sql`
-        SELECT CASE WHEN vencedor_id = corretor_a_id THEN corretor_b_id ELSE corretor_a_id END as perdedor_id
-        FROM copa_confrontos WHERE fase_id = ${faseAtualId} ORDER BY RAND()
-      `)).map(r => Number(r.perdedor_id));
+        SELECT CASE WHEN vencedorId = corretorAId THEN corretorBId ELSE corretorAId END as perdedorId
+        FROM copa_confrontos WHERE faseId = ${faseAtualId} ORDER BY RAND()
+      `)).map(r => Number(r.perdedorId));
 
       const fase3o = fases.find(f => f.ordem === 5);
       if (fase3o && perdedores.length >= 2) {
-        const c3oRows = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE fase_id = ${fase3o.id} LIMIT 1`));
+        const c3oRows = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE faseId = ${fase3o.id} LIMIT 1`));
         const c3oId = Number(c3oRows[0]?.id);
-        if (c3oId) await db.execute(sql`UPDATE copa_confrontos SET corretor_a_id = ${perdedores[0]}, corretor_b_id = ${perdedores[1]} WHERE id = ${c3oId}`);
+        if (c3oId) await db.execute(sql`UPDATE copa_confrontos SET corretorAId = ${perdedores[0]}, corretorBId = ${perdedores[1]} WHERE id = ${c3oId}`);
       }
 
       const faseFinal = fases.find(f => f.ordem === 6);
       if (faseFinal && vencedores.length >= 2) {
-        const cFinalRows = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE fase_id = ${faseFinal.id} LIMIT 1`));
+        const cFinalRows = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE faseId = ${faseFinal.id} LIMIT 1`));
         const cFinalId = Number(cFinalRows[0]?.id);
-        if (cFinalId) await db.execute(sql`UPDATE copa_confrontos SET corretor_a_id = ${vencedores[0]}, corretor_b_id = ${vencedores[1]} WHERE id = ${cFinalId}`);
+        if (cFinalId) await db.execute(sql`UPDATE copa_confrontos SET corretorAId = ${vencedores[0]}, corretorBId = ${vencedores[1]} WHERE id = ${cFinalId}`);
       }
 
       return { success: true, proximaFase: "Disputa 3º Lugar + Grande Final" };
@@ -641,12 +650,12 @@ export const copaRouter = router({
     const proximaFase = fases.find(f => f.ordem === faseAtualOrdem! + 1);
     if (!proximaFase) throw new TRPCError({ code: "BAD_REQUEST", message: "Próxima fase não encontrada" });
 
-    const slotIds = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE fase_id = ${proximaFase.id} AND corretor_a_id IS NULL ORDER BY posicao`))
+    const slotIds = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE faseId = ${proximaFase.id} AND corretorAId IS NULL ORDER BY posicao`))
       .map(r => Number(r.id));
 
     for (let i = 0; i < vencedores.length - 1 && i / 2 < slotIds.length; i += 2) {
       const slotId = slotIds[i / 2];
-      await db.execute(sql`UPDATE copa_confrontos SET corretor_a_id = ${vencedores[i]}, corretor_b_id = ${vencedores[i + 1]} WHERE id = ${slotId}`);
+      await db.execute(sql`UPDATE copa_confrontos SET corretorAId = ${vencedores[i]}, corretorBId = ${vencedores[i + 1]} WHERE id = ${slotId}`);
     }
 
     return { success: true, proximaFase: proximaFase.nome };
