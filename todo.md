@@ -5612,3 +5612,11 @@
 - [x] Corrigir edição de prêmios (updateConfigPremio)
 - [x] Corrigir seleção de participantes para sorteio (setParticipantes)
 - [x] Automatizar criação do chaveamento após sorteio (realizarSorteio)
+
+## Bug Fix: Copa SMQ - Campos undefined (db.execute retorna [rows, fields])
+- [x] Adicionar função helper getRows() no copa.ts para extrair rows corretamente
+- [x] Corrigir todos os endpoints: getConfigPremios, getConfigPontos, getCorretoresDisponiveis, getRanking, getDados, getHistoricoPontuacoes, getMeusPontosSemana
+- [x] Adicionar endpoints: inicializarDados, getStatusChaveamento, avancarFase
+- [x] Frontend: adicionar card "Copa não inicializada" com botão de inicialização
+- [x] Frontend: adicionar card "Avançar Fase" quando todos os confrontos da fase atual têm vencedor
+- [x] Frontend: melhorar painel "Definir Vencedores" - agrupar por fase, esconder placeholders NULL, mostrar bandeiras e contador de progresso

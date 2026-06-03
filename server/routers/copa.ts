@@ -451,4 +451,204 @@ export const copaRouter = router({
       totalPontos: Number(r.total_pontos),
     }));
   }),
+
+  // ── Inicializar dados da Copa (idempotente) ─────────────────────────────────
+  inicializarDados: protectedProcedure.mutation(async ({ ctx }) => {
+    if (!isAdminOrSuperintendente(ctx.user.role)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem inicializar a copa" });
+    }
+    const db = await getDb();
+
+    const faseCount = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_fases`));
+    if (Number(faseCount[0]?.c) === 0) {
+      const fases = [
+        { nome: "Fase de Grupos", ordem: 1, si: 1, sf: 3 },
+        { nome: "Oitavas de Final", ordem: 2, si: 4, sf: 4 },
+        { nome: "Quartas de Final", ordem: 3, si: 5, sf: 5 },
+        { nome: "Semifinal", ordem: 4, si: 6, sf: 6 },
+        { nome: "Disputa 3º Lugar", ordem: 5, si: 7, sf: 7 },
+        { nome: "Grande Final", ordem: 6, si: 8, sf: 8 },
+      ];
+      for (const f of fases) {
+        await db.execute(sql`INSERT INTO copa_fases (nome, ordem, semana_inicio, semana_fim) VALUES (${f.nome}, ${f.ordem}, ${f.si}, ${f.sf})`);
+      }
+    }
+
+    const selCount = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_selecoes`));
+    if (Number(selCount[0]?.c) === 0) {
+      const selecoes: [string, string][] = [
+        ["Brasil", "🇧🇷"], ["Argentina", "🇦🇷"], ["França", "🇫🇷"], ["Alemanha", "🇩🇪"],
+        ["Espanha", "🇪🇸"], ["Inglaterra", "🇬🇧"], ["Portugal", "🇵🇹"], ["Holanda", "🇳🇱"],
+        ["Bélgica", "🇧🇪"], ["Itália", "🇮🇹"], ["Croácia", "🇭🇷"], ["Uruguai", "🇺🇾"],
+        ["México", "🇲🇽"], ["EUA", "🇺🇸"], ["Canadá", "🇨🇦"], ["Marrocos", "🇲🇦"],
+        ["Senegal", "🇸🇳"], ["Japão", "🇯🇵"], ["Coreia do Sul", "🇰🇷"], ["Austrália", "🇦🇺"],
+        ["Suíça", "🇨🇭"], ["Dinamarca", "🇩🇰"], ["Polônia", "🇵🇱"], ["Sérvia", "🇷🇸"],
+        ["Colômbia", "🇨🇴"], ["Equador", "🇪🇨"], ["Chile", "🇨🇱"], ["Peru", "🇵🇪"],
+        ["Gana", "🇬🇭"], ["Tunísia", "🇹🇳"], ["Camarões", "🇨🇲"], ["Costa Rica", "🇨🇷"],
+      ];
+      for (const [nome, bandeira] of selecoes) {
+        await db.execute(sql`INSERT INTO copa_selecoes (nome, bandeira) VALUES (${nome}, ${bandeira})`);
+      }
+    }
+
+    const ptCount = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_config_pontos`));
+    if (Number(ptCount[0]?.c) === 0) {
+      const pontos = [
+        { chave: "agendamentos", label: "Agendamento", pontos: 25 },
+        { chave: "visitas", label: "Visita Realizada", pontos: 40 },
+        { chave: "documentacao", label: "Análise de Crédito", pontos: 60 },
+        { chave: "vendas", label: "Venda (Contrato)", pontos: 150 },
+      ];
+      for (const p of pontos) {
+        await db.execute(sql`INSERT INTO copa_config_pontos (chave, label, pontos) VALUES (${p.chave}, ${p.label}, ${p.pontos})`);
+      }
+    }
+
+    const prCount = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_config_premios`));
+    if (Number(prCount[0]?.c) === 0) {
+      const premios = [
+        { posicao: "🏆 Campeão", descricao: "Grande Final - 1º Lugar", valor: "R$ 4.000,00", icone: "🏆", ordem: 1 },
+        { posicao: "🥈 Vice-Campeão", descricao: "Grande Final - 2º Lugar", valor: "R$ 2.000,00", icone: "🥈", ordem: 2 },
+        { posicao: "🥉 3º Lugar", descricao: "Disputa 3º Lugar", valor: "R$ 900,00", icone: "🥉", ordem: 3 },
+        { posicao: "🎖️ Semifinalista", descricao: "Avanço à Semifinal", valor: "R$ 250,00", icone: "🎖️", ordem: 4 },
+        { posicao: "⭐ Top 3 Grupos", descricao: "Top 3 da Fase de Grupos", valor: "R$ 100,00", icone: "⭐", ordem: 5 },
+      ];
+      for (const p of premios) {
+        await db.execute(sql`INSERT INTO copa_config_premios (posicao, descricao, valor, icone, ordem) VALUES (${p.posicao}, ${p.descricao}, ${p.valor}, ${p.icone}, ${p.ordem})`);
+      }
+    }
+
+    return { success: true };
+  }),
+
+  // ── Status do chaveamento (qual fase pode avançar) ──────────────────────────
+  getStatusChaveamento: protectedProcedure.query(async ({ ctx }) => {
+    if (!isAdminOrSuperintendente(ctx.user.role)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Acesso negado" });
+    }
+    const db = await getDb();
+
+    const fases = getRows(await db.execute(sql`SELECT id, nome, ordem FROM copa_fases ORDER BY ordem`))
+      .map(r => ({ id: Number(r.id), nome: String(r.nome), ordem: Number(r.ordem) }));
+
+    if (fases.length === 0) return { podeAvancar: false, faseAtual: null as null | { id: number; nome: string; total: number; completos: number }, proximaFase: null as null | { id: number; nome: string } };
+
+    for (const fase of fases) {
+      const countRow = getRows(await db.execute(sql`
+        SELECT COUNT(*) as total,
+               SUM(CASE WHEN vencedor_id IS NOT NULL THEN 1 ELSE 0 END) as completos
+        FROM copa_confrontos WHERE fase_id = ${fase.id}
+      `));
+      const row = countRow[0];
+      const total = Number(row?.total ?? 0);
+      const completos = Number(row?.completos ?? 0);
+
+      if (total === 0) continue;
+
+      if (completos < total) {
+        return {
+          podeAvancar: false,
+          faseAtual: { id: fase.id, nome: fase.nome, total, completos },
+          proximaFase: fases.find(f => f.ordem === fase.ordem + 1) ?? null,
+        };
+      }
+
+      // Todos completos — verifica se próxima fase tem slots vazios
+      const nextFase = fases.find(f => f.ordem === fase.ordem + 1);
+      if (nextFase) {
+        const emptyRow = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_confrontos WHERE fase_id = ${nextFase.id} AND corretor_a_id IS NULL`));
+        const emptyCount = Number(emptyRow[0]?.c ?? 0);
+        if (emptyCount > 0) {
+          return {
+            podeAvancar: true,
+            faseAtual: { id: fase.id, nome: fase.nome, total, completos },
+            proximaFase: { id: nextFase.id, nome: nextFase.nome },
+          };
+        }
+      }
+    }
+
+    return { podeAvancar: false, faseAtual: null, proximaFase: null };
+  }),
+
+  // ── Avançar fase: preenche slots da próxima fase com vencedores ─────────────
+  avancarFase: protectedProcedure.mutation(async ({ ctx }) => {
+    if (!isAdminOrSuperintendente(ctx.user.role)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem avançar fases" });
+    }
+    const db = await getDb();
+
+    const fases = getRows(await db.execute(sql`SELECT id, nome, ordem FROM copa_fases ORDER BY ordem`))
+      .map(r => ({ id: Number(r.id), nome: String(r.nome), ordem: Number(r.ordem) }));
+
+    let faseAtualId: number | null = null;
+    let faseAtualOrdem: number | null = null;
+
+    for (const fase of fases) {
+      const countRow = getRows(await db.execute(sql`
+        SELECT COUNT(*) as total,
+               SUM(CASE WHEN vencedor_id IS NOT NULL THEN 1 ELSE 0 END) as completos
+        FROM copa_confrontos WHERE fase_id = ${fase.id}
+      `));
+      const row = countRow[0];
+      const total = Number(row?.total ?? 0);
+      const completos = Number(row?.completos ?? 0);
+      if (total === 0 || completos < total) continue;
+
+      const nextFase = fases.find(f => f.ordem === fase.ordem + 1);
+      if (nextFase) {
+        const emptyRow = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_confrontos WHERE fase_id = ${nextFase.id} AND corretor_a_id IS NULL`));
+        if (Number(emptyRow[0]?.c ?? 0) > 0) {
+          faseAtualId = fase.id;
+          faseAtualOrdem = fase.ordem;
+          break;
+        }
+      }
+    }
+
+    if (!faseAtualId || faseAtualOrdem === null) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhuma fase pronta para avançar" });
+    }
+
+    const vencedores = getRows(await db.execute(sql`SELECT vencedor_id FROM copa_confrontos WHERE fase_id = ${faseAtualId} AND vencedor_id IS NOT NULL ORDER BY RAND()`))
+      .map(r => Number(r.vencedor_id));
+
+    // Semifinal (ordem 4): perdedores → Disputa 3º (ordem 5), vencedores → Final (ordem 6)
+    if (faseAtualOrdem === 4) {
+      const perdedores = getRows(await db.execute(sql`
+        SELECT CASE WHEN vencedor_id = corretor_a_id THEN corretor_b_id ELSE corretor_a_id END as perdedor_id
+        FROM copa_confrontos WHERE fase_id = ${faseAtualId} ORDER BY RAND()
+      `)).map(r => Number(r.perdedor_id));
+
+      const fase3o = fases.find(f => f.ordem === 5);
+      if (fase3o && perdedores.length >= 2) {
+        const c3oRows = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE fase_id = ${fase3o.id} LIMIT 1`));
+        const c3oId = Number(c3oRows[0]?.id);
+        if (c3oId) await db.execute(sql`UPDATE copa_confrontos SET corretor_a_id = ${perdedores[0]}, corretor_b_id = ${perdedores[1]} WHERE id = ${c3oId}`);
+      }
+
+      const faseFinal = fases.find(f => f.ordem === 6);
+      if (faseFinal && vencedores.length >= 2) {
+        const cFinalRows = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE fase_id = ${faseFinal.id} LIMIT 1`));
+        const cFinalId = Number(cFinalRows[0]?.id);
+        if (cFinalId) await db.execute(sql`UPDATE copa_confrontos SET corretor_a_id = ${vencedores[0]}, corretor_b_id = ${vencedores[1]} WHERE id = ${cFinalId}`);
+      }
+
+      return { success: true, proximaFase: "Disputa 3º Lugar + Grande Final" };
+    }
+
+    // Normal: preenche slots da próxima fase em pares
+    const proximaFase = fases.find(f => f.ordem === faseAtualOrdem! + 1);
+    if (!proximaFase) throw new TRPCError({ code: "BAD_REQUEST", message: "Próxima fase não encontrada" });
+
+    const slotIds = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE fase_id = ${proximaFase.id} AND corretor_a_id IS NULL ORDER BY posicao`))
+      .map(r => Number(r.id));
+
+    for (let i = 0; i < vencedores.length - 1 && i / 2 < slotIds.length; i += 2) {
+      const slotId = slotIds[i / 2];
+      await db.execute(sql`UPDATE copa_confrontos SET corretor_a_id = ${vencedores[i]}, corretor_b_id = ${vencedores[i + 1]} WHERE id = ${slotId}`);
+    }
+
+    return { success: true, proximaFase: proximaFase.nome };
+  }),
 });

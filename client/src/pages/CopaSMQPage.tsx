@@ -235,6 +235,32 @@ export default function CopaSMQPage() {
     onError: (e) => toast.error(e.message),
   });
 
+  // ── Inicializar Copa ──
+  const inicializarDados = trpc.copa.inicializarDados.useMutation({
+    onSuccess: () => {
+      toast.success("Copa inicializada com sucesso!");
+      utils.copa.getConfigPontos.invalidate();
+      utils.copa.getConfigPremios.invalidate();
+      utils.copa.getDados.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // ── Status do chaveamento ──
+  const { data: statusChaveamento } = trpc.copa.getStatusChaveamento.useQuery(
+    undefined, { enabled: isAdmin, refetchInterval: 10000 }
+  );
+
+  // ── Avançar Fase ──
+  const avancarFase = trpc.copa.avancarFase.useMutation({
+    onSuccess: (res) => {
+      toast.success(`Fase avançada! Próxima: ${res.proximaFase}`);
+      utils.copa.getDados.invalidate();
+      utils.copa.getStatusChaveamento.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   // Bug 3 fix: build configMap from configPontos for preview calculation
   const configMap = useMemo(() => {
     const map: Record<string, number> = { agendamentos: 25, visitas: 40, documentacao: 60, vendas: 150 };
@@ -727,6 +753,55 @@ export default function CopaSMQPage() {
               <TabsContent value="admin">
                 <div className="space-y-5">
 
+                  {/* 0. Inicializar Copa (aparece quando não há dados) */}
+                  {(configPontos as ConfigPonto[]).length === 0 && (configPremios as ConfigPremio[]).length === 0 && (
+                    <Card className="bg-yellow-500/10 border-yellow-500/40">
+                      <CardHeader>
+                        <CardTitle className="text-yellow-300 flex items-center gap-2">
+                          <Star className="h-5 w-5 text-yellow-400" /> Copa não inicializada
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <p className="text-white/70 text-sm">
+                          O banco de dados da Copa SMQ ainda não foi populado com as fases, seleções, pontuações e prêmios iniciais.
+                          Clique no botão abaixo para inicializar tudo automaticamente.
+                        </p>
+                        <Button
+                          className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold"
+                          disabled={inicializarDados.isPending}
+                          onClick={() => inicializarDados.mutate()}
+                        >
+                          {inicializarDados.isPending ? "Inicializando..." : "🚀 Inicializar Copa SMQ"}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* 0b. Avançar Fase (aparece quando todos os confrontos da fase atual têm vencedor) */}
+                  {statusChaveamento?.podeAvancar && (
+                    <Card className="bg-green-500/10 border-green-500/40">
+                      <CardHeader>
+                        <CardTitle className="text-green-300 flex items-center gap-2">
+                          <ChevronUp className="h-5 w-5 text-green-400" /> Fase Pronta para Avançar!
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <p className="text-white/70 text-sm">
+                          Todos os confrontos da <strong className="text-white">{statusChaveamento.faseAtual?.nome}</strong> foram
+                          definidos ({statusChaveamento.faseAtual?.completos}/{statusChaveamento.faseAtual?.total}).
+                          Próxima fase: <strong className="text-green-300">{statusChaveamento.proximaFase}</strong>
+                        </p>
+                        <Button
+                          className="w-full bg-green-600 hover:bg-green-500 text-white font-bold"
+                          disabled={avancarFase.isPending}
+                          onClick={() => avancarFase.mutate()}
+                        >
+                          {avancarFase.isPending ? "Avançando..." : `⚡ Avançar para ${statusChaveamento.proximaFase}`}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  )}
+
                   {/* 1. Gerenciar Participantes */}
                   <Card className="bg-white/5 border-blue-500/30">
                     <CardHeader>
@@ -1066,41 +1141,80 @@ export default function CopaSMQPage() {
                     </CardContent>
                   </Card>
 
-                  {/* 6. Definir Vencedores */}
-                  {(dados?.confrontos as Confronto[] | undefined)?.length ? (
-                    <Card className="bg-white/5 border-white/10">
-                      <CardHeader>
-                        <CardTitle className="text-white flex items-center gap-2">
-                          <Swords className="h-5 w-5 text-orange-400" /> Definir Vencedores dos Confrontos
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          {(dados!.confrontos as Confronto[]).map((c) => {
-                            const fase = (dados!.fases as Fase[]).find(f => f.id === c.faseId);
+                  {/* 6. Definir Vencedores - agrupado por fase, sem placeholders NULL */}
+                  {(() => {
+                    const todosConfrontos = (dados?.confrontos as Confronto[] | undefined) ?? [];
+                    // Filtra apenas confrontos com participantes reais (não placeholders NULL)
+                    const confrontosReais = todosConfrontos.filter(c => c.corretorAId !== null && c.corretorBId !== null);
+                    if (!confrontosReais.length) return null;
+                    // Agrupa por fase
+                    const fases = (dados?.fases as Fase[] | undefined) ?? [];
+                    const porFase = fases
+                      .map(f => ({ fase: f, confrontos: confrontosReais.filter(c => c.faseId === f.id) }))
+                      .filter(g => g.confrontos.length > 0);
+                    const totalCompletos = confrontosReais.filter(c => c.vencedorId !== null).length;
+                    return (
+                      <Card className="bg-white/5 border-white/10">
+                        <CardHeader>
+                          <CardTitle className="text-white flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Swords className="h-5 w-5 text-orange-400" /> Definir Vencedores dos Confrontos
+                            </div>
+                            <Badge className="bg-orange-500/20 text-orange-300 border-orange-500/30 text-xs">
+                              {totalCompletos}/{confrontosReais.length} definidos
+                            </Badge>
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          {porFase.map(({ fase, confrontos }) => {
+                            const completos = confrontos.filter(c => c.vencedorId !== null).length;
                             return (
-                              <div key={c.id} className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2">
-                                <span className="text-white/40 text-xs w-20 shrink-0">{fase?.nome ?? "—"}</span>
-                                <div className="flex-1 flex items-center gap-2">
-                                  <Button size="sm"
-                                    className={`flex-1 text-xs h-7 ${c.vencedorId === c.corretorAId ? "bg-yellow-500 text-black hover:bg-yellow-400" : "bg-transparent border border-white/20 text-white hover:bg-white/10"}`}
-                                    onClick={() => setVencedor.mutate({ confrontoId: c.id, vencedorId: c.corretorAId })}>
-                                    {nomeCorretor(c.corretorAId)}
-                                  </Button>
-                                  <Minus className="h-3 w-3 text-white/30 shrink-0" />
-                                  <Button size="sm"
-                                    className={`flex-1 text-xs h-7 ${c.vencedorId === c.corretorBId ? "bg-yellow-500 text-black hover:bg-yellow-400" : "bg-transparent border border-white/20 text-white hover:bg-white/10"}`}
-                                    onClick={() => setVencedor.mutate({ confrontoId: c.id, vencedorId: c.corretorBId })}>
-                                    {nomeCorretor(c.corretorBId)}
-                                  </Button>
+                              <div key={fase.id}>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-white/70 text-xs font-semibold uppercase tracking-wider">{fase.nome}</span>
+                                  <Badge className={`text-xs ${
+                                    completos === confrontos.length
+                                      ? "bg-green-500/20 text-green-300 border-green-500/30"
+                                      : "bg-white/10 text-white/50 border-white/10"
+                                  }`}>{completos}/{confrontos.length}</Badge>
+                                </div>
+                                <div className="space-y-2">
+                                  {confrontos.map((c) => (
+                                    <div key={c.id} className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2">
+                                      <div className="flex-1 flex items-center gap-2">
+                                        <Button size="sm"
+                                          className={`flex-1 text-xs h-7 ${
+                                            c.vencedorId === c.corretorAId
+                                              ? "bg-yellow-500 text-black hover:bg-yellow-400"
+                                              : "bg-transparent border border-white/20 text-white hover:bg-white/10"
+                                          }`}
+                                          onClick={() => setVencedor.mutate({ confrontoId: c.id, vencedorId: c.corretorAId })}>
+                                          {selecaoCorretor(c.corretorAId)?.bandeira ?? ""} {nomeCorretor(c.corretorAId)}
+                                        </Button>
+                                        <Minus className="h-3 w-3 text-white/30 shrink-0" />
+                                        <Button size="sm"
+                                          className={`flex-1 text-xs h-7 ${
+                                            c.vencedorId === c.corretorBId
+                                              ? "bg-yellow-500 text-black hover:bg-yellow-400"
+                                              : "bg-transparent border border-white/20 text-white hover:bg-white/10"
+                                          }`}
+                                          onClick={() => setVencedor.mutate({ confrontoId: c.id, vencedorId: c.corretorBId })}>
+                                          {selecaoCorretor(c.corretorBId)?.bandeira ?? ""} {nomeCorretor(c.corretorBId)}
+                                        </Button>
+                                      </div>
+                                      {c.vencedorId && (
+                                        <Trophy className="h-4 w-4 text-yellow-400 shrink-0" />
+                                      )}
+                                    </div>
+                                  ))}
                                 </div>
                               </div>
                             );
                           })}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ) : null}
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
 
                   {/* 7. Histórico de Pontuações Manuais */}
                   <Card className="bg-white/5 border-white/10">
