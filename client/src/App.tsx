@@ -86,7 +86,7 @@ const SessoesOferta = lazy(() => import("@/pages/SessoesOferta"));
 const DetalhesSessaoOferta = lazy(() => import("@/pages/DetalhesSessaoOferta"));
 const LinksUteis = lazy(() => import("@/pages/LinksUteis"));
 const GerenciarLinksUteis = lazy(() => import("@/pages/GerenciarLinksUteis"));
-const CopaSMQ = lazy(() => import("@/pages/CopaSMQ"));
+const CopaSMQ = lazy(() => import("@/pages/CopaSMQPage"));
 
 function PageLoader() {
   return (
