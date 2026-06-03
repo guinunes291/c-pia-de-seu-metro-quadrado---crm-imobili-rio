@@ -400,9 +400,53 @@ export const copaRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem definir vencedores" });
       }
       const db = await getDb();
+
+      // Buscar confronto atual para saber o vencedor anterior e semanaRef
+      const confrontoRows = getRows(await db.execute(sql`
+        SELECT vencedorId, semanaRef FROM copa_confrontos WHERE id = ${input.confrontoId}
+      `));
+      const confrontoAtual = confrontoRows[0];
+      const vencedorAnterior = confrontoAtual?.vencedorId ? Number(confrontoAtual.vencedorId) : null;
+      const semanaRef = confrontoAtual?.semanaRef ? Number(confrontoAtual.semanaRef) : 1;
+
+      // Atualizar o vencedor do confronto
       await db.execute(sql`
         UPDATE copa_confrontos SET vencedorId = ${input.vencedorId} WHERE id = ${input.confrontoId}
       `);
+
+      const BONUS_VENCEDOR = 20;
+
+      // Remover bônus do vencedor anterior (se estava definido e mudou)
+      if (vencedorAnterior && vencedorAnterior !== input.vencedorId) {
+        await db.execute(sql`
+          UPDATE copa_pontuacoes
+          SET total = GREATEST(0, total - ${BONUS_VENCEDOR}),
+              updatedAt = NOW()
+          WHERE corretorId = ${vencedorAnterior} AND semana = ${semanaRef}
+        `);
+      }
+
+      // Adicionar +20 pontos ao novo vencedor (se definido)
+      if (input.vencedorId && input.vencedorId !== vencedorAnterior) {
+        // Upsert: se não existe registro para essa semana, cria; senão, incrementa
+        const existeRows = getRows(await db.execute(sql`
+          SELECT id FROM copa_pontuacoes WHERE corretorId = ${input.vencedorId} AND semana = ${semanaRef}
+        `));
+        if (existeRows.length > 0) {
+          await db.execute(sql`
+            UPDATE copa_pontuacoes
+            SET total = total + ${BONUS_VENCEDOR},
+                updatedAt = NOW()
+            WHERE corretorId = ${input.vencedorId} AND semana = ${semanaRef}
+          `);
+        } else {
+          await db.execute(sql`
+            INSERT INTO copa_pontuacoes (corretorId, semana, agendamentos, visitas, documentacao, vendas, total, createdAt, updatedAt)
+            VALUES (${input.vencedorId}, ${semanaRef}, 0, 0, 0, 0, ${BONUS_VENCEDOR}, NOW(), NOW())
+          `);
+        }
+      }
+
       return { success: true };
     }),
 
