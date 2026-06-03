@@ -144,16 +144,20 @@ export default function CopaSMQPage() {
   const faseTerceiro = fases.find(f => f.nome?.toLowerCase().includes("3") || f.nome?.toLowerCase().includes("terceiro"));
   const faseFinal = fases.find(f => f.nome?.toLowerCase().includes("final") && !f.nome?.toLowerCase().includes("semi") && !f.nome?.toLowerCase().includes("3"));
 
-  // Meus confrontos (fase de grupos) — filtrado pelo corretor logado
+  // Meus confrontos (fase de grupos) — filtrado pelo corretor logado; admin vê todos
   const meusConfrontos = useMemo(() => {
     if (!user?.id) return [];
-    const myId = Number(user.id);
     const fgId = faseGrupos?.id ?? 1;
+    if (isAdmin) {
+      // Admin vê todos os confrontos da fase de grupos
+      return confrontos.filter(c => c.faseId === fgId && (c.corretorAId || c.corretorBId));
+    }
+    const myId = Number(user.id);
     return confrontos.filter(c =>
       c.faseId === fgId &&
       (Number(c.corretorAId) === myId || Number(c.corretorBId) === myId)
     );
-  }, [confrontos, user?.id, faseGrupos]);
+  }, [confrontos, user?.id, faseGrupos, isAdmin]);
 
   function confrontosDaFase(faseId: number) {
     return confrontos.filter(c => c.faseId === faseId && (c.corretorAId || c.corretorBId));
@@ -370,68 +374,71 @@ export default function CopaSMQPage() {
               </div>
             )}
 
-            {/* Meus Confrontos — visível apenas para corretores (não admin) */}
-            {!isAdmin && meusConfrontos.length > 0 && (
+            {/* Meus Confrontos — corretores veem os seus; admin vê todos */}
+            {meusConfrontos.length > 0 && (
               <div style={{ marginBottom: 48 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
                   <div style={{ width: 4, height: 28, background: "#009c3b", borderRadius: 2 }} />
-                  <div style={{ color: "#fff", fontSize: 18, fontWeight: 900, letterSpacing: 2, textTransform: "uppercase" }}>⚽ MEUS CONFRONTOS</div>
+                  <div style={{ color: "#fff", fontSize: 18, fontWeight: 900, letterSpacing: 2, textTransform: "uppercase" }}>{isAdmin ? "⚽ TODOS OS CONFRONTOS" : "⚽ MEUS CONFRONTOS"}</div>
                   <div style={{ background: "rgba(0,156,59,0.15)", border: "1px solid rgba(0,156,59,0.3)", borderRadius: 20, padding: "4px 12px", color: "#009c3b", fontSize: 12, fontWeight: 700 }}>
-                    {meusConfrontos.length} duelos
+                    {meusConfrontos.length} {isAdmin ? "confrontos" : "duelos"}
                   </div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {meusConfrontos.map(c => {
-                    const isA = Number(c.corretorAId) === Number(user?.id);
-                    const myId = isA ? c.corretorAId : c.corretorBId;
-                    const oppId = isA ? c.corretorBId : c.corretorAId;
-                    const selMy = selecaoCorretor(myId);
-                    const selOpp = selecaoCorretor(oppId);
-                    const ptsMy = ptsPorCorretor(myId);
-                    const ptsOpp = ptsPorCorretor(oppId);
-                    const venceu = c.vencedorId && Number(c.vencedorId) === Number(myId);
-                    const perdeu = c.vencedorId && Number(c.vencedorId) !== Number(myId);
+                    const isA = !isAdmin && Number(c.corretorAId) === Number(user?.id);
+                    // Para admin: sempre mostra A vs B; para corretor: mostra "Você" vs adversário
+                    const leftId = isAdmin ? c.corretorAId : (isA ? c.corretorAId : c.corretorBId);
+                    const rightId = isAdmin ? c.corretorBId : (isA ? c.corretorBId : c.corretorAId);
+                    const selLeft = selecaoCorretor(leftId);
+                    const selRight = selecaoCorretor(rightId);
+                    const ptsLeft = ptsPorCorretor(leftId);
+                    const ptsRight = ptsPorCorretor(rightId);
+                    const leftWon = c.vencedorId && Number(c.vencedorId) === Number(leftId);
+                    const rightWon = c.vencedorId && Number(c.vencedorId) === Number(rightId);
+                    const isMyWin = !isAdmin && leftWon;
+                    const isMyLoss = !isAdmin && rightWon;
                     return (
                       <div key={c.id} style={{
-                        background: venceu ? "rgba(0,156,59,0.12)" : perdeu ? "rgba(229,62,62,0.08)" : "rgba(255,255,255,0.04)",
-                        border: `1px solid ${venceu ? "rgba(0,156,59,0.4)" : perdeu ? "rgba(229,62,62,0.3)" : "rgba(255,255,255,0.1)"}`,
+                        background: isMyWin ? "rgba(0,156,59,0.12)" : isMyLoss ? "rgba(229,62,62,0.08)" : "rgba(255,255,255,0.04)",
+                        border: `1px solid ${isMyWin ? "rgba(0,156,59,0.4)" : isMyLoss ? "rgba(229,62,62,0.3)" : "rgba(255,255,255,0.1)"}`,
                         borderRadius: 10,
                         padding: "16px 20px",
                         display: "flex",
                         alignItems: "center",
                         gap: 16,
                       }}>
-                        {/* Minha seleção */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
-                          <span style={{ fontSize: 32 }}>{selMy?.bandeira ?? "🏳️"}</span>
+                        {/* Lado esquerdo */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
+                          <span style={{ fontSize: 40, lineHeight: 1 }}>{selLeft?.bandeira ?? "🏳️"}</span>
                           <div>
-                            <div style={{ color: "#009c3b", fontSize: 13, fontWeight: 700 }}>{selMy?.nome ?? "Você"}</div>
-                            <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11 }}>Você</div>
+                            <div style={{ color: "#009c3b", fontSize: 16, fontWeight: 800 }}>{selLeft?.nome ?? "A definir"}</div>
+                            <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, fontWeight: 600 }}>{isAdmin ? nomeCorretor(leftId) : "Você"}</div>
                           </div>
                         </div>
                         {/* Placar */}
-                        <div style={{ textAlign: "center", minWidth: 80 }}>
+                        <div style={{ textAlign: "center", minWidth: 90 }}>
                           <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>SEM {c.semanaRef ?? 1}</div>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
-                            <span style={{ color: venceu ? "#009c3b" : "#fff", fontSize: 22, fontWeight: 900 }}>{ptsMy}</span>
-                            <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 14 }}>×</span>
-                            <span style={{ color: perdeu ? "#e53e3e" : "#fff", fontSize: 22, fontWeight: 900 }}>{ptsOpp}</span>
+                            <span style={{ color: leftWon ? "#009c3b" : "#fff", fontSize: 24, fontWeight: 900 }}>{ptsLeft}</span>
+                            <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 16 }}>×</span>
+                            <span style={{ color: rightWon ? "#009c3b" : "#fff", fontSize: 24, fontWeight: 900 }}>{ptsRight}</span>
                           </div>
                           {c.vencedorId ? (
-                            <div style={{ color: venceu ? "#009c3b" : "#e53e3e", fontSize: 11, fontWeight: 700, marginTop: 4 }}>
-                              {venceu ? "✅ VITÓRIA" : "❌ DERROTA"}
+                            <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4, color: leftWon ? "#009c3b" : rightWon ? "#e53e3e" : "#fff" }}>
+                              {leftWon ? (isAdmin ? `✅ ${selLeft?.nome ?? ""} venceu` : "✅ VITÓRIA") : (isAdmin ? `✅ ${selRight?.nome ?? ""} venceu` : "❌ DERROTA")}
                             </div>
                           ) : (
                             <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 11, marginTop: 4 }}>EM ANDAMENTO</div>
                           )}
                         </div>
-                        {/* Adversário */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, justifyContent: "flex-end" }}>
+                        {/* Lado direito */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, justifyContent: "flex-end" }}>
                           <div style={{ textAlign: "right" }}>
-                            <div style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>{selOpp?.nome ?? "A definir"}</div>
-                            <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11 }}>{nomeCorretor(oppId)}</div>
+                            <div style={{ color: "#fff", fontSize: 16, fontWeight: 800 }}>{selRight?.nome ?? "A definir"}</div>
+                            <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, fontWeight: 600 }}>{nomeCorretor(rightId)}</div>
                           </div>
-                          <span style={{ fontSize: 32 }}>{selOpp?.bandeira ?? "🏳️"}</span>
+                          <span style={{ fontSize: 40, lineHeight: 1 }}>{selRight?.bandeira ?? "🏳️"}</span>
                         </div>
                       </div>
                     );
