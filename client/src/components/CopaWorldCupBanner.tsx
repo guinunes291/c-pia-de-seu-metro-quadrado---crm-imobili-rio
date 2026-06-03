@@ -45,7 +45,7 @@ export function CopaWorldCupBanner() {
           <span style={{ animation: "copaBounce 1s ease-in-out infinite", display: "inline-block" }}>⚽</span>
           <span className="hidden sm:inline">Copa do Mundo 2026 • </span>
           <span>Copa SMQ em andamento!</span>
-          <span className="hidden sm:inline">• 03/06 – 12/07 • R$ 4.350 em prêmios</span>
+          <span className="hidden sm:inline">• 03/06 – 26/07 • R$ 7.250 em prêmios</span>
           <span style={{ animation: "copaBounce 1s ease-in-out infinite 0.5s", display: "inline-block" }}>🏆</span>
           <Link href="/copa-smq" className="ml-2 underline underline-offset-2 hover:opacity-80 transition-opacity text-white">
             Ver ranking →
