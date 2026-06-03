@@ -86,6 +86,7 @@ const SessoesOferta = lazy(() => import("@/pages/SessoesOferta"));
 const DetalhesSessaoOferta = lazy(() => import("@/pages/DetalhesSessaoOferta"));
 const LinksUteis = lazy(() => import("@/pages/LinksUteis"));
 const GerenciarLinksUteis = lazy(() => import("@/pages/GerenciarLinksUteis"));
+const CopaSMQ = lazy(() => import("@/pages/CopaSMQ"));
 
 function PageLoader() {
   return (
@@ -174,6 +175,8 @@ function Router() {
       <Route path="/oferta-ativa/:id" component={KanbanOfertaAtiva} />
       <Route path="/sessoes-oferta" component={SessoesOferta} />
       <Route path="/sessoes-oferta/:id" component={DetalhesSessaoOferta} />
+      {/* Copa SMQ */}
+      <Route path="/copa-smq" component={CopaSMQ} />
       {/* Links Úteis */}
       <Route path="/links-uteis" component={LinksUteis} />
       <Route path="/gerenciar-links-uteis" component={GerenciarLinksUteis} />

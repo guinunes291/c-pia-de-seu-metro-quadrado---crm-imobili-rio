@@ -37,7 +37,7 @@ import {
   UserCheck, UserX, Circle, Trash2, ChevronDown, Tv, FolderOpen,
   UserCog, Import, Home, Clock, CalendarCheck, Sun, Moon, Calendar,
   FileText, MessageCircle, Link2, Activity, Lock, ArrowRightLeft, Database, Trash,
-  Shield, Briefcase, Calculator, Phone, DollarSign, Zap, AlertTriangle, Bot
+  Shield, Briefcase, Calculator, Phone, DollarSign, Zap, AlertTriangle, Bot, Swords
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
@@ -56,6 +56,7 @@ import { useSolicitarPermissaoNotificacao } from "@/hooks/useNotificacaoLead";
 import { PushNotificationBanner } from "@/components/PushNotificationBanner";
 import { useLeadEvents } from "@/hooks/useLeadEvents";
 import { CommandPalette } from "@/components/layout/CommandPalette";
+import { CopaWorldCupBanner } from "@/components/CopaWorldCupBanner";
 
 // Estrutura de menu agrupado
 const menuGroups = [
@@ -121,6 +122,7 @@ const menuGroups = [
     icon: TrendingUp,
     items: [
       { icon: Trophy, label: "Conquistas", path: "/meu-perfil" },
+      { icon: Swords, label: "⚽ Copa SMQ", path: "/copa-smq" },
       // Corretor acessa seu painel unificado
       { icon: BarChart3, label: "Meu Painel", path: "/meu-painel", roles: ["corretor"] },
       // Gestor e Admin acessam ranking do time / geral
@@ -199,6 +201,7 @@ const menuGroupsCorretor = [
     items: [
       { icon: Zap, label: "Modo Blitz", path: "/modo-blitz" },
       { icon: Bell, label: "Notificações", path: "/notificacoes", showBadge: true },
+      { icon: Swords, label: "⚽ Copa SMQ", path: "/copa-smq" },
     ],
   },
   {
@@ -315,6 +318,7 @@ const menuGroupsAdmin = [
     items: [
       { icon: Trophy, label: "Ranking TV", path: "/ranking-tv" },
       { icon: Tv, label: "Performance TV", path: "/performance-tv" },
+      { icon: Swords, label: "⚽ Copa SMQ", path: "/copa-smq" },
       { icon: Target, label: "Metas Mensais", path: "/metas" },
       { icon: Target, label: "Metas Diárias", path: "/metas-diarias" },
       { icon: BarChart3, label: "Relatórios", path: "/relatorios" },
@@ -1055,6 +1059,7 @@ function DashboardContent({
       </Sidebar>
 
       <SidebarInset>
+        <CopaWorldCupBanner />
         <header className="flex h-14 items-center justify-between gap-2 border-b px-4 lg:px-6">
           <SidebarTrigger className="-ml-2">
             <PanelLeft className="h-5 w-5" />

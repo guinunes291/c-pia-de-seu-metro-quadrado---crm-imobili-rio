@@ -36,6 +36,7 @@ import { relatorioDiarioRouter } from "./routers/relatorioDiario";
 import { scriptsRouter } from "./routers/scripts";
 import { ofertaAtivaRouter } from "./routers/ofertaAtiva";
 import { linksUteisRouter } from "./routers/linksUteis";
+import { copaRouter } from "./routers/copa";
 
 // ============================================================================
 // HELPERS E MIDDLEWARES
@@ -121,6 +122,7 @@ export const appRouter = router({
   scripts: scriptsRouter,
   ofertaAtiva: ofertaAtivaRouter,
   linksUteis: linksUteisRouter,
+  copa: copaRouter,
   
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
