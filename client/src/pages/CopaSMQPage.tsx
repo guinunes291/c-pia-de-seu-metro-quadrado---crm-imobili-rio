@@ -278,20 +278,36 @@ export default function CopaSMQPage() {
 
   const nomeCorretor = (id: number | null) => {
     if (!id) return "—";
-    return dados?.corretoresCopa.find((c: CorretorCopa) => c.corretorId === id)?.nome ?? `#${id}`;
+    return dados?.corretoresCopa.find((c: CorretorCopa) => Number(c.corretorId) === Number(id))?.nome ?? `#${id}`;
   };
 
   const selecaoCorretor = (id: number | null): Selecao | null => {
     if (!id || !dados) return null;
-    const cc = dados.corretoresCopa.find((c: CorretorCopa) => c.corretorId === id);
+    const cc = dados.corretoresCopa.find((c: CorretorCopa) => Number(c.corretorId) === Number(id));
     if (!cc?.selecaoId) return null;
     return dados.selecoes.find((s: Selecao) => s.id === cc.selecaoId) ?? null;
   };
 
-  const faseAtual = dados?.fases?.find((f: Fase) => {
-    if (!f.semanaInicio || !f.semanaFim) return false;
-    return semanaAtual >= parseInt(f.semanaInicio) && semanaAtual <= parseInt(f.semanaFim);
-  }) ?? dados?.fases?.[0];
+  // Determina fase atual comparando data atual com intervalo DD/MM da fase
+  const faseAtual = useMemo(() => {
+    if (!dados?.fases?.length) return null;
+    const hoje = new Date();
+    const ano = 2026;
+    const parseDDMM = (ddmm: string | null): Date | null => {
+      if (!ddmm) return null;
+      const [d, m] = ddmm.trim().split("/").map(Number);
+      if (!d || !m) return null;
+      return new Date(ano, m - 1, d);
+    };
+    const found = dados.fases.find((f: Fase) => {
+      const ini = parseDDMM(f.semanaInicio);
+      const fim = parseDDMM(f.semanaFim);
+      if (!ini || !fim) return false;
+      fim.setHours(23, 59, 59);
+      return hoje >= ini && hoje <= fim;
+    });
+    return found ?? dados.fases[0];
+  }, [dados?.fases]);
 
   const toggleSelecionado = (id: number) => {
     setSelecionados(prev => {
