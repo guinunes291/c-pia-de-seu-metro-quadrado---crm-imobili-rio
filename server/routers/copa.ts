@@ -450,6 +450,97 @@ export const copaRouter = router({
       return { success: true };
     }),
 
+  // Pontos de cada corretor por semana específica (para placar dos confrontos)
+  // Cada semana tem um intervalo de datas fixo no calendário da Copa
+  getPontosConfronto: protectedProcedure
+    .input(z.object({
+      corretorIds: z.array(z.number()),
+      semanaRef: z.number().min(1).max(8),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+
+      // Mapa de semana → janela de datas (SP = UTC-3, então início = DD/06 03:00 UTC)
+      const SEMANAS: Record<number, { inicio: string; fim: string }> = {
+        1: { inicio: "2026-06-03 03:00:00", fim: "2026-06-09 02:59:59" },
+        2: { inicio: "2026-06-10 03:00:00", fim: "2026-06-16 02:59:59" },
+        3: { inicio: "2026-06-17 03:00:00", fim: "2026-06-23 02:59:59" },
+        4: { inicio: "2026-06-24 03:00:00", fim: "2026-06-30 02:59:59" },
+        5: { inicio: "2026-07-01 03:00:00", fim: "2026-07-07 02:59:59" },
+        6: { inicio: "2026-07-08 03:00:00", fim: "2026-07-14 02:59:59" },
+        7: { inicio: "2026-07-15 03:00:00", fim: "2026-07-21 02:59:59" },
+        8: { inicio: "2026-07-22 03:00:00", fim: "2026-07-28 02:59:59" },
+      };
+
+      const janela = SEMANAS[input.semanaRef];
+      if (!janela) return {};
+
+      const configResult = await db.execute(sql`SELECT chave, pontos FROM copa_config_pontos`);
+      const configMap: Record<string, number> = {};
+      for (const row of getRows(configResult)) {
+        configMap[String(row.chave)] = Number(row.pontos);
+      }
+      const ptAgendamento = configMap["agendamentos"] ?? 25;
+      const ptVisita = configMap["visitas"] ?? 40;
+      const ptDocumentacao = configMap["documentacao"] ?? 60;
+      const ptVenda = configMap["vendas"] ?? 150;
+
+      const resultado: Record<number, number> = {};
+
+      for (const corretorId of input.corretorIds) {
+        // CRM: contar eventos do CRM na janela da semana
+        const [agRows, visRows, docRows, vendRows] = await Promise.all([
+          db.execute(sql`
+            SELECT COUNT(*) as cnt FROM agendamentos
+            WHERE corretorId = ${corretorId}
+              AND createdAt >= ${janela.inicio} AND createdAt <= ${janela.fim}
+          `),
+          db.execute(sql`
+            SELECT COUNT(*) as cnt FROM lead_status_transitions
+            WHERE corretorId = ${corretorId} AND statusNovo = 'visita_realizada'
+              AND createdAt >= ${janela.inicio} AND createdAt <= ${janela.fim}
+          `),
+          db.execute(sql`
+            SELECT COUNT(*) as cnt FROM lead_status_transitions
+            WHERE corretorId = ${corretorId} AND statusNovo = 'analise_credito'
+              AND createdAt >= ${janela.inicio} AND createdAt <= ${janela.fim}
+          `),
+          db.execute(sql`
+            SELECT COUNT(*) as cnt FROM lead_status_transitions
+            WHERE corretorId = ${corretorId} AND statusNovo = 'contrato_fechado'
+              AND createdAt >= ${janela.inicio} AND createdAt <= ${janela.fim}
+          `),
+        ]);
+
+        const crmAg = Number(getRows(agRows)[0]?.cnt ?? 0);
+        const crmVis = Number(getRows(visRows)[0]?.cnt ?? 0);
+        const crmDoc = Number(getRows(docRows)[0]?.cnt ?? 0);
+        const crmVend = Number(getRows(vendRows)[0]?.cnt ?? 0);
+
+        // Manual: pontuação lançada manualmente para essa semana
+        const manualRows = getRows(await db.execute(sql`
+          SELECT agendamentos, visitas, documentacao, vendas
+          FROM copa_pontuacoes
+          WHERE corretorId = ${corretorId} AND semana = ${input.semanaRef}
+        `));
+        const manual = manualRows[0] ?? {};
+        const manAg = Number(manual.agendamentos ?? 0);
+        const manVis = Number(manual.visitas ?? 0);
+        const manDoc = Number(manual.documentacao ?? 0);
+        const manVend = Number(manual.vendas ?? 0);
+
+        const totalPontos =
+          (crmAg + manAg) * ptAgendamento +
+          (crmVis + manVis) * ptVisita +
+          (crmDoc + manDoc) * ptDocumentacao +
+          (crmVend + manVend) * ptVenda;
+
+        resultado[corretorId] = totalPontos;
+      }
+
+      return resultado; // { [corretorId]: pontos }
+    }),
+
   // Últimas 50 pontuações manuais com nome do corretor
   getHistoricoPontuacoes: protectedProcedure.query(async ({ ctx }) => {
     if (!isAdminOrSuperintendente(ctx.user.role)) {

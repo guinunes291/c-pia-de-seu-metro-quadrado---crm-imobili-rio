@@ -144,6 +144,87 @@ export default function CopaSMQPage() {
   const faseTerceiro = fases.find(f => f.nome?.toLowerCase().includes("3") || f.nome?.toLowerCase().includes("terceiro"));
   const faseFinal = fases.find(f => f.nome?.toLowerCase().includes("final") && !f.nome?.toLowerCase().includes("semi") && !f.nome?.toLowerCase().includes("3"));
 
+  // Pontos por semana para cada confronto (placar correto)
+  // Coletar IDs únicos de corretores e semanas dos confrontos visíveis
+  const confrontosSemanas = useMemo(() => {
+    const semanas = new Set<number>();
+    const fgId = faseGrupos?.id ?? 1;
+    confrontos.filter(c => c.faseId === fgId).forEach(c => {
+      if (c.semanaRef) semanas.add(Number(c.semanaRef));
+    });
+    return Array.from(semanas);
+  }, [confrontos, faseGrupos]);
+
+  const confrontoCorretorIds = useMemo(() => {
+    const fgId = faseGrupos?.id ?? 1;
+    const ids = new Set<number>();
+    confrontos.filter(c => c.faseId === fgId).forEach(c => {
+      if (c.corretorAId) ids.add(Number(c.corretorAId));
+      if (c.corretorBId) ids.add(Number(c.corretorBId));
+    });
+    return Array.from(ids);
+  }, [confrontos, faseGrupos]);
+
+  // Queries de pontos por semana (uma query por semana)
+  const pontosSem1 = trpc.copa.getPontosConfronto.useQuery(
+    { corretorIds: confrontoCorretorIds, semanaRef: 1 },
+    { enabled: confrontosSemanas.includes(1) && confrontoCorretorIds.length > 0 }
+  );
+  const pontosSem2 = trpc.copa.getPontosConfronto.useQuery(
+    { corretorIds: confrontoCorretorIds, semanaRef: 2 },
+    { enabled: confrontosSemanas.includes(2) && confrontoCorretorIds.length > 0 }
+  );
+  const pontosSem3 = trpc.copa.getPontosConfronto.useQuery(
+    { corretorIds: confrontoCorretorIds, semanaRef: 3 },
+    { enabled: confrontosSemanas.includes(3) && confrontoCorretorIds.length > 0 }
+  );
+  const pontosSem4 = trpc.copa.getPontosConfronto.useQuery(
+    { corretorIds: confrontoCorretorIds, semanaRef: 4 },
+    { enabled: confrontosSemanas.includes(4) && confrontoCorretorIds.length > 0 }
+  );
+  const pontosSem5 = trpc.copa.getPontosConfronto.useQuery(
+    { corretorIds: confrontoCorretorIds, semanaRef: 5 },
+    { enabled: confrontosSemanas.includes(5) && confrontoCorretorIds.length > 0 }
+  );
+  const pontosSem6 = trpc.copa.getPontosConfronto.useQuery(
+    { corretorIds: confrontoCorretorIds, semanaRef: 6 },
+    { enabled: confrontosSemanas.includes(6) && confrontoCorretorIds.length > 0 }
+  );
+  const pontosSem7 = trpc.copa.getPontosConfronto.useQuery(
+    { corretorIds: confrontoCorretorIds, semanaRef: 7 },
+    { enabled: confrontosSemanas.includes(7) && confrontoCorretorIds.length > 0 }
+  );
+  const pontosSem8 = trpc.copa.getPontosConfronto.useQuery(
+    { corretorIds: confrontoCorretorIds, semanaRef: 8 },
+    { enabled: confrontosSemanas.includes(8) && confrontoCorretorIds.length > 0 }
+  );
+
+  // Mapa consolidado: semana -> { corretorId -> pontos }
+  const pontosPorSemana = useMemo(() => {
+    const map: Record<number, Record<number, number>> = {};
+    const semDatas = [
+      [1, pontosSem1.data], [2, pontosSem2.data], [3, pontosSem3.data],
+      [4, pontosSem4.data], [5, pontosSem5.data], [6, pontosSem6.data],
+      [7, pontosSem7.data], [8, pontosSem8.data],
+    ] as [number, Record<string, number> | undefined][];
+    for (const [sem, data] of semDatas) {
+      if (data) {
+        map[sem] = {};
+        for (const [idStr, pts] of Object.entries(data)) {
+          map[sem][Number(idStr)] = Number(pts);
+        }
+      }
+    }
+    return map;
+  }, [pontosSem1.data, pontosSem2.data, pontosSem3.data, pontosSem4.data,
+      pontosSem5.data, pontosSem6.data, pontosSem7.data, pontosSem8.data]);
+
+  // Helper: pontos de um corretor em uma semana específica
+  function ptsPorSemana(corretorId: number | null, semana: number | null): number {
+    if (!corretorId || !semana) return 0;
+    return pontosPorSemana[semana]?.[corretorId] ?? 0;
+  }
+
   // Meus confrontos (fase de grupos) — filtrado pelo corretor logado; admin vê todos
   const meusConfrontos = useMemo(() => {
     if (!user?.id) return [];
@@ -392,10 +473,18 @@ export default function CopaSMQPage() {
                     const rightId = isAdmin ? c.corretorBId : (isA ? c.corretorBId : c.corretorAId);
                     const selLeft = selecaoCorretor(leftId);
                     const selRight = selecaoCorretor(rightId);
-                    const ptsLeft = ptsPorCorretor(leftId);
-                    const ptsRight = ptsPorCorretor(rightId);
-                    const leftWon = c.vencedorId && Number(c.vencedorId) === Number(leftId);
-                    const rightWon = c.vencedorId && Number(c.vencedorId) === Number(rightId);
+                    // Placar = pontos produzidos na semana específica do confronto
+                    const semConfronto = c.semanaRef ?? 1;
+                    const ptsLeft = ptsPorSemana(leftId, semConfronto);
+                    const ptsRight = ptsPorSemana(rightId, semConfronto);
+                    // Vencedor automático: quem tem mais pontos na semana (se semana já passou)
+                    const semanaJaPassou = semConfronto < semanaAtual;
+                    const vencedorAutoId = semanaJaPassou && ptsLeft !== ptsRight
+                      ? (ptsLeft > ptsRight ? leftId : rightId)
+                      : null;
+                    const vencedorEfetivoId = c.vencedorId ? Number(c.vencedorId) : (vencedorAutoId ? Number(vencedorAutoId) : null);
+                    const leftWon = vencedorEfetivoId && vencedorEfetivoId === Number(leftId);
+                    const rightWon = vencedorEfetivoId && vencedorEfetivoId === Number(rightId);
                     const isMyWin = !isAdmin && leftWon;
                     const isMyLoss = !isAdmin && rightWon;
                     return (
