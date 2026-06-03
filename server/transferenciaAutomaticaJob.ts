@@ -25,19 +25,32 @@ export async function verificarTransferenciasAutomaticas() {
       return { transferidos: 0, perdidos: 0, erros: 0 };
     }
 
-    const dataLimite = new Date(agora().getTime() - 2 * 24 * 60 * 60 * 1000); // 2 dias atrás
+    const dataLimite = new Date(agora().getTime() - 2 * 24 * 60 * 60 * 1000); // 48 horas atrás
     
     console.log(`[Transferência Automática] Verificando leads sem interação desde ${dataLimite.toISOString()}...`);
 
-    // Buscar leads elegíveis para transferência
+    // Buscar leads elegíveis para transferência:
+    // - status 'em_atendimento' sem interação há mais de 48h
+    // - status 'aguardando_atendimento' com corretor atribuído e sem interação há mais de 48h
+    //   (usa timestampRecebimento como referência quando ultimaInteracao é nula)
     // Excluir leads transferidos manualmente pelo admin (ficam fixos no corretor)
     const leadsParaTransferir = await db
       .select()
       .from(leads)
       .where(
         and(
-          eq(leads.status, "em_atendimento"),
-          lt(leads.ultimaInteracao, dataLimite),
+          sql`(
+            (${leads.status} = 'em_atendimento' AND ${leads.ultimaInteracao} < ${dataLimite})
+            OR
+            (
+              ${leads.status} = 'aguardando_atendimento'
+              AND ${leads.corretorId} IS NOT NULL
+              AND (
+                (${leads.ultimaInteracao} IS NOT NULL AND ${leads.ultimaInteracao} < ${dataLimite})
+                OR (${leads.ultimaInteracao} IS NULL AND ${leads.timestampRecebimento} < ${dataLimite})
+              )
+            )
+          )`,
           ne(leads.origem, "captacao_corretor"), // Exceção: não transferir leads de captação própria
           eq(leads.naLixeira, false), // Não processar leads na lixeira
           eq(leads.transferidoManualmentePorAdmin, false), // Não redistribuir leads atribuídos manualmente pelo admin
