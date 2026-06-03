@@ -160,6 +160,58 @@ export const copaRouter = router({
       return { success: true, total };
     }),
 
+  // Buscar configuração de pontuação
+  getConfigPontos: protectedProcedure.query(async () => {
+    const db = await getDb();
+    const rows = await db.execute(sql`SELECT * FROM copa_config_pontos ORDER BY id`);
+    return (rows as unknown as Record<string, unknown>[]).map((r) => ({
+      id: Number(r.id),
+      chave: String(r.chave),
+      label: String(r.label),
+      pontos: Number(r.pontos),
+    }));
+  }),
+
+  // Atualizar pontuação de uma categoria
+  updateConfigPontos: protectedProcedure
+    .input(z.object({ chave: z.string(), pontos: z.number().min(0).max(9999) }))
+    .mutation(async ({ ctx, input }) => {
+      if (!isAdminOrSuperintendente(ctx.user.role)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem editar pontuações" });
+      }
+      const db = await getDb();
+      await db.execute(sql`UPDATE copa_config_pontos SET pontos = ${input.pontos} WHERE chave = ${input.chave}`);
+      return { success: true };
+    }),
+
+  // Buscar configuração de prêmios
+  getConfigPremios: protectedProcedure.query(async () => {
+    const db = await getDb();
+    const rows = await db.execute(sql`SELECT * FROM copa_config_premios ORDER BY ordem`);
+    return (rows as unknown as Record<string, unknown>[]).map((r) => ({
+      id: Number(r.id),
+      posicao: String(r.posicao),
+      descricao: String(r.descricao),
+      valor: String(r.valor),
+      icone: String(r.icone),
+      ordem: Number(r.ordem),
+    }));
+  }),
+
+  // Atualizar um prêmio
+  updateConfigPremio: protectedProcedure
+    .input(z.object({ id: z.number(), posicao: z.string(), descricao: z.string(), valor: z.string(), icone: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      if (!isAdminOrSuperintendente(ctx.user.role)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem editar prêmios" });
+      }
+      const db = await getDb();
+      await db.execute(sql`
+        UPDATE copa_config_premios SET posicao = ${input.posicao}, descricao = ${input.descricao}, valor = ${input.valor}, icone = ${input.icone} WHERE id = ${input.id}
+      `);
+      return { success: true };
+    }),
+
   // Definir vencedor de um confronto (apenas admin/superintendente)
   setVencedor: protectedProcedure
     .input(z.object({
