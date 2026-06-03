@@ -5,7 +5,7 @@ import { getDb } from "../db";
 import { sql } from "drizzle-orm";
 
 function isAdminOrSuperintendente(role: string) {
-  return role === "admin" || role === "superintendente";
+  return role === "admin" || role === "superintendente" || role === "gestor";
 }
 
 /**

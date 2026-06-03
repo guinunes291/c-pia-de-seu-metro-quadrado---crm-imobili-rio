@@ -117,7 +117,7 @@ function useCountdown(target: Date) {
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function CopaSMQPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin" || user?.role === "superintendente";
+  const isAdmin = user?.role === "admin" || user?.role === "superintendente" || user?.role === "gestor";
 
   const { data: ranking = [], isLoading: loadingRanking } = trpc.copa.getRanking.useQuery(undefined, { refetchInterval: 30000 });
   const { data: dados, isLoading: loadingDados } = trpc.copa.getDados.useQuery();
@@ -753,29 +753,34 @@ export default function CopaSMQPage() {
               <TabsContent value="admin">
                 <div className="space-y-5">
 
-                  {/* 0. Inicializar Copa (aparece quando não há dados) */}
-                  {(configPontos as ConfigPonto[]).length === 0 && (configPremios as ConfigPremio[]).length === 0 && (
-                    <Card className="bg-yellow-500/10 border-yellow-500/40">
-                      <CardHeader>
-                        <CardTitle className="text-yellow-300 flex items-center gap-2">
-                          <Star className="h-5 w-5 text-yellow-400" /> Copa não inicializada
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <p className="text-white/70 text-sm">
-                          O banco de dados da Copa SMQ ainda não foi populado com as fases, seleções, pontuações e prêmios iniciais.
-                          Clique no botão abaixo para inicializar tudo automaticamente.
-                        </p>
-                        <Button
-                          className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold"
-                          disabled={inicializarDados.isPending}
-                          onClick={() => inicializarDados.mutate()}
-                        >
-                          {inicializarDados.isPending ? "Inicializando..." : "🚀 Inicializar Copa SMQ"}
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  )}
+                  {/* 0. Inicializar / Resetar Copa - sempre visível */}
+                  <Card className="bg-white/5 border-yellow-500/20">
+                    <CardHeader>
+                      <CardTitle className="text-yellow-300 flex items-center gap-2">
+                        <Star className="h-5 w-5 text-yellow-400" /> Inicializar / Resetar Copa
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <p className="text-white/60 text-sm">
+                        Popula o banco com fases, 32 seleções, pontuações e prêmios padrão (operação idempotente — não duplica dados existentes).
+                        Use também para restaurar dados após uma limpeza.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-2 text-xs text-white/50">
+                          <span className="bg-white/10 rounded px-2 py-1">{(configPontos as ConfigPonto[]).length} pontuações</span>
+                          <span className="bg-white/10 rounded px-2 py-1">{(configPremios as ConfigPremio[]).length} prêmios</span>
+                          <span className="bg-white/10 rounded px-2 py-1">{dados?.selecoes?.length ?? 0} seleções</span>
+                        </div>
+                      </div>
+                      <Button
+                        className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold"
+                        disabled={inicializarDados.isPending}
+                        onClick={() => inicializarDados.mutate()}
+                      >
+                        {inicializarDados.isPending ? "Inicializando..." : "🚀 Inicializar Copa SMQ"}
+                      </Button>
+                    </CardContent>
+                  </Card>
 
                   {/* 0b. Avançar Fase (aparece quando todos os confrontos da fase atual têm vencedor) */}
                   {statusChaveamento?.podeAvancar && (
