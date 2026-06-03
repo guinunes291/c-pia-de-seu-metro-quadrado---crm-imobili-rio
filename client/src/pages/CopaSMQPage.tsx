@@ -117,7 +117,7 @@ function useCountdown(target: Date) {
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function CopaSMQPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin" || user?.role === "superintendente" || user?.role === "gestor";
+  const isAdmin = ["admin", "superintendente", "gestor"].includes(user?.role ?? "");
 
   const { data: ranking = [], isLoading: loadingRanking } = trpc.copa.getRanking.useQuery(undefined, { refetchInterval: 30000 });
   const { data: dados, isLoading: loadingDados } = trpc.copa.getDados.useQuery();

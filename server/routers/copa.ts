@@ -5,7 +5,7 @@ import { getDb } from "../db";
 import { sql } from "drizzle-orm";
 
 function isAdminOrSuperintendente(role: string) {
-  return role === "admin" || role === "superintendente" || role === "gestor";
+  return ["admin", "superintendente", "gestor"].includes(role);
 }
 
 /**
@@ -304,7 +304,7 @@ export const copaRouter = router({
         CASE WHEN cc.id IS NOT NULL THEN 1 ELSE 0 END as na_copa
       FROM users u
       LEFT JOIN copa_corretores cc ON cc.corretor_id = u.id
-      WHERE u.role IN ('corretor', 'gestor', 'superintendente')
+      WHERE u.role IN ('corretor', 'gestor', 'superintendente', 'admin')
       ORDER BY u.name
     `);
     return getRows(result).map((r) => ({
