@@ -4,10 +4,6 @@ import { TRPCError } from "@trpc/server";
 import { getDb } from "../db";
 import { sql } from "drizzle-orm";
 
-// ============================================================================
-// COPA SMQ — Router de Campeonato Interno
-// ============================================================================
-
 function isAdminOrSuperintendente(role: string) {
   return role === "admin" || role === "superintendente";
 }
@@ -33,6 +29,8 @@ export const copaRouter = router({
       corretorId: Number(row.corretor_id),
       nome: String(row.nome ?? ""),
       selecaoId: row.selecao_id ? Number(row.selecao_id) : null,
+      selecaoNome: row.selecaoNome ? String(row.selecaoNome) : null,
+      selecaoBandeira: row.selecaoBandeira ? String(row.selecaoBandeira) : null,
     });
 
     const mapSelecao = (row: Record<string, unknown>) => ({
@@ -49,12 +47,14 @@ export const copaRouter = router({
       semanaFim: row.semana_fim ? String(row.semana_fim) : null,
     });
 
+    // Bug 5 fix: include semana_ref in mapConfronto
     const mapConfronto = (row: Record<string, unknown>) => ({
       id: Number(row.id),
       faseId: Number(row.fase_id),
       corretorAId: row.corretor_a_id ? Number(row.corretor_a_id) : null,
       corretorBId: row.corretor_b_id ? Number(row.corretor_b_id) : null,
       vencedorId: row.vencedor_id ? Number(row.vencedor_id) : null,
+      semanaRef: row.semana_ref ? Number(row.semana_ref) : null,
     });
 
     return {
@@ -65,9 +65,9 @@ export const copaRouter = router({
     };
   }),
 
-  // Semana atual da copa
+  // Bug 4 fix: use UTC offset for BRT timezone (03:00 UTC = 00:00 BRT)
   getSemanaAtual: protectedProcedure.query(async () => {
-    const inicio = new Date("2026-06-03");
+    const inicio = new Date("2026-06-03T03:00:00.000Z");
     const agora = new Date();
     const diffMs = agora.getTime() - inicio.getTime();
     const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -75,12 +75,10 @@ export const copaRouter = router({
     return { semana };
   }),
 
-  // Ranking geral — calculado em tempo real com dados do CRM (a partir de 03/06/2026)
-  // + pontuação manual lançada pelo admin (bônus/correções)
+  // Ranking geral — calculado em tempo real com dados do CRM + pontuação manual
   getRanking: protectedProcedure.query(async () => {
     const db = await getDb();
 
-    // Buscar tabela de pontos configurada (fallback para valores padrão)
     const configPontosRows = await db.execute(sql`SELECT chave, pontos FROM copa_config_pontos`);
     const configMap: Record<string, number> = {};
     for (const row of configPontosRows as unknown as Record<string, unknown>[]) {
@@ -95,14 +93,13 @@ export const copaRouter = router({
     const COPA_FIM = "2026-07-26 23:59:59";
 
     const rows = await db.execute(sql`
-      SELECT 
+      SELECT
         cc.corretor_id,
         u.name as nome,
         s.nome as selecao_nome,
         s.bandeira as selecao_bandeira,
         s.id as selecao_id,
 
-        -- Agendamentos criados na Copa (tabela agendamentos, data de criação)
         COALESCE((
           SELECT COUNT(*)
           FROM agendamentos a
@@ -111,7 +108,6 @@ export const copaRouter = router({
             AND a.createdAt <= ${COPA_FIM}
         ), 0) as crm_agendamentos,
 
-        -- Visitas realizadas na Copa (transição para visita_realizada)
         COALESCE((
           SELECT COUNT(*)
           FROM lead_status_transitions lst
@@ -121,7 +117,6 @@ export const copaRouter = router({
             AND lst.createdAt <= ${COPA_FIM}
         ), 0) as crm_visitas,
 
-        -- Análises de crédito na Copa (transição para analise_credito)
         COALESCE((
           SELECT COUNT(*)
           FROM lead_status_transitions lst
@@ -131,7 +126,6 @@ export const copaRouter = router({
             AND lst.createdAt <= ${COPA_FIM}
         ), 0) as crm_documentacao,
 
-        -- Contratos fechados na Copa (transição para contrato_fechado)
         COALESCE((
           SELECT COUNT(*)
           FROM lead_status_transitions lst
@@ -141,7 +135,6 @@ export const copaRouter = router({
             AND lst.createdAt <= ${COPA_FIM}
         ), 0) as crm_vendas,
 
-        -- Pontuação manual (bônus/correções lançadas pelo admin)
         COALESCE((SELECT SUM(cp.agendamentos) FROM copa_pontuacoes cp WHERE cp.corretor_id = cc.corretor_id), 0) as manual_agendamentos,
         COALESCE((SELECT SUM(cp.visitas) FROM copa_pontuacoes cp WHERE cp.corretor_id = cc.corretor_id), 0) as manual_visitas,
         COALESCE((SELECT SUM(cp.documentacao) FROM copa_pontuacoes cp WHERE cp.corretor_id = cc.corretor_id), 0) as manual_documentacao,
@@ -165,7 +158,7 @@ export const copaRouter = router({
         totalVendas * ptVenda;
 
       return {
-        posicao: 0, // será preenchido após ordenação
+        posicao: 0,
         corretorId: Number(r.corretor_id),
         nome: String(r.nome ?? ""),
         selecao: r.selecao_id
@@ -179,14 +172,12 @@ export const copaRouter = router({
       };
     });
 
-    // Ordenar por pontos desc, nome asc e atribuir posição
     result.sort((a, b) => b.totalPontos - a.totalPontos || a.nome.localeCompare(b.nome));
     result.forEach((r, i) => { r.posicao = i + 1; });
 
     return result;
   }),
 
-  // Estatísticas gerais
   getStats: protectedProcedure.query(async () => {
     const db = await getDb();
     const [countRow] = await db.execute(sql`SELECT COUNT(*) as total FROM copa_corretores`);
@@ -195,7 +186,7 @@ export const copaRouter = router({
     };
   }),
 
-  // Salvar pontuação semanal (apenas admin/superintendente)
+  // Bug 3 fix: fetch copa_config_pontos before calculating total instead of using hardcoded values
   salvarPontuacao: protectedProcedure
     .input(z.object({
       corretorId: z.number(),
@@ -210,14 +201,20 @@ export const copaRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem lançar pontuações" });
       }
 
-      const total =
-        input.agendamentos * 25 +
-        input.visitas * 40 +
-        input.documentacao * 60 +
-        input.vendas * 150;
-
-      // Upsert: atualiza se já existe pontuação para esse corretor+semana
       const db = await getDb();
+
+      const configRows = await db.execute(sql`SELECT chave, pontos FROM copa_config_pontos`);
+      const configMap: Record<string, number> = {};
+      for (const row of configRows as unknown as Record<string, unknown>[]) {
+        configMap[String(row.chave)] = Number(row.pontos);
+      }
+
+      const total =
+        input.agendamentos * (configMap["agendamentos"] ?? 25) +
+        input.visitas * (configMap["visitas"] ?? 40) +
+        input.documentacao * (configMap["documentacao"] ?? 60) +
+        input.vendas * (configMap["vendas"] ?? 150);
+
       await db.execute(sql`
         INSERT INTO copa_pontuacoes (corretor_id, semana, agendamentos, visitas, documentacao, vendas, total_pontos, updated_at)
         VALUES (${input.corretorId}, ${input.semana}, ${input.agendamentos}, ${input.visitas}, ${input.documentacao}, ${input.vendas}, ${total}, NOW())
@@ -233,7 +230,6 @@ export const copaRouter = router({
       return { success: true, total };
     }),
 
-  // Buscar configuração de pontuação
   getConfigPontos: protectedProcedure.query(async () => {
     const db = await getDb();
     const rows = await db.execute(sql`SELECT * FROM copa_config_pontos ORDER BY id`);
@@ -245,7 +241,6 @@ export const copaRouter = router({
     }));
   }),
 
-  // Atualizar pontuação de uma categoria
   updateConfigPontos: protectedProcedure
     .input(z.object({ chave: z.string(), pontos: z.number().min(0).max(9999) }))
     .mutation(async ({ ctx, input }) => {
@@ -257,7 +252,6 @@ export const copaRouter = router({
       return { success: true };
     }),
 
-  // Buscar configuração de prêmios
   getConfigPremios: protectedProcedure.query(async () => {
     const db = await getDb();
     const rows = await db.execute(sql`SELECT * FROM copa_config_premios ORDER BY ordem`);
@@ -271,7 +265,6 @@ export const copaRouter = router({
     }));
   }),
 
-  // Atualizar um prêmio
   updateConfigPremio: protectedProcedure
     .input(z.object({ id: z.number(), posicao: z.string(), descricao: z.string(), valor: z.string(), icone: z.string() }))
     .mutation(async ({ ctx, input }) => {
@@ -280,12 +273,13 @@ export const copaRouter = router({
       }
       const db = await getDb();
       await db.execute(sql`
-        UPDATE copa_config_premios SET posicao = ${input.posicao}, descricao = ${input.descricao}, valor = ${input.valor}, icone = ${input.icone} WHERE id = ${input.id}
+        UPDATE copa_config_premios
+        SET posicao = ${input.posicao}, descricao = ${input.descricao}, valor = ${input.valor}, icone = ${input.icone}
+        WHERE id = ${input.id}
       `);
       return { success: true };
     }),
 
-  // Buscar todos os corretores/gestores para seleção no sorteio
   getCorretoresDisponiveis: protectedProcedure.query(async () => {
     const db = await getDb();
     const rows = await db.execute(sql`
@@ -304,7 +298,6 @@ export const copaRouter = router({
     }));
   }),
 
-  // Atualizar lista de participantes da copa
   setParticipantes: protectedProcedure
     .input(z.object({ corretorIds: z.array(z.number()) }))
     .mutation(async ({ ctx, input }) => {
@@ -321,7 +314,6 @@ export const copaRouter = router({
       return { success: true };
     }),
 
-  // Realizar sorteio automático: atribui seleções aleatoriamente e monta chaveamento
   realizarSorteio: protectedProcedure
     .input(z.object({ confirmar: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
@@ -368,7 +360,6 @@ export const copaRouter = router({
       return { success: true as const, participantes: participantes.length, confrontos: posicao - 1 };
     }),
 
-  // Definir vencedor de um confronto (apenas admin/superintendente)
   setVencedor: protectedProcedure
     .input(z.object({
       confrontoId: z.number(),
@@ -378,12 +369,66 @@ export const copaRouter = router({
       if (!isAdminOrSuperintendente(ctx.user.role)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem definir vencedores" });
       }
-
       const db = await getDb();
       await db.execute(sql`
         UPDATE copa_confrontos SET vencedor_id = ${input.vencedorId} WHERE id = ${input.confrontoId}
       `);
-
       return { success: true };
     }),
+
+  // New: last 50 manual pontuacao entries with corretor name
+  getHistoricoPontuacoes: protectedProcedure.query(async ({ ctx }) => {
+    if (!isAdminOrSuperintendente(ctx.user.role)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem ver o histórico" });
+    }
+    const db = await getDb();
+    const rows = await db.execute(sql`
+      SELECT cp.id, cp.corretor_id, cp.semana, cp.agendamentos, cp.visitas,
+             cp.documentacao, cp.vendas, cp.total_pontos, cp.updated_at,
+             u.name as nome_corretor
+      FROM copa_pontuacoes cp
+      JOIN users u ON u.id = cp.corretor_id
+      ORDER BY cp.updated_at DESC
+      LIMIT 50
+    `);
+    return (rows as unknown as Record<string, unknown>[]).map((r) => ({
+      id: Number(r.id),
+      corretorId: Number(r.corretor_id),
+      nomeCorretor: String(r.nome_corretor ?? ""),
+      semana: Number(r.semana),
+      agendamentos: Number(r.agendamentos),
+      visitas: Number(r.visitas),
+      documentacao: Number(r.documentacao),
+      vendas: Number(r.vendas),
+      totalPontos: Number(r.total_pontos),
+      updatedAt: r.updated_at ? String(r.updated_at) : null,
+    }));
+  }),
+
+  // New: delete a pontuacao entry by id
+  deletePontuacao: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (!isAdminOrSuperintendente(ctx.user.role)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem excluir pontuações" });
+      }
+      const db = await getDb();
+      await db.execute(sql`DELETE FROM copa_pontuacoes WHERE id = ${input.id}`);
+      return { success: true };
+    }),
+
+  // New: weekly points breakdown for the logged-in user
+  getMeusPontosSemana: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    const rows = await db.execute(sql`
+      SELECT semana, total_pontos
+      FROM copa_pontuacoes
+      WHERE corretor_id = ${ctx.user.id}
+      ORDER BY semana
+    `);
+    return (rows as unknown as Record<string, unknown>[]).map((r) => ({
+      semana: Number(r.semana),
+      totalPontos: Number(r.total_pontos),
+    }));
+  }),
 });
