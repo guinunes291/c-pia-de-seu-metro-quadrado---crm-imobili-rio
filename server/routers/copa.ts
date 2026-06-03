@@ -285,6 +285,89 @@ export const copaRouter = router({
       return { success: true };
     }),
 
+  // Buscar todos os corretores/gestores para seleção no sorteio
+  getCorretoresDisponiveis: protectedProcedure.query(async () => {
+    const db = await getDb();
+    const rows = await db.execute(sql`
+      SELECT u.id, u.name as nome, u.role,
+        CASE WHEN cc.id IS NOT NULL THEN 1 ELSE 0 END as na_copa
+      FROM users u
+      LEFT JOIN copa_corretores cc ON cc.corretor_id = u.id
+      WHERE u.role IN ('corretor', 'gestor', 'superintendente')
+      ORDER BY u.name
+    `);
+    return (rows as unknown as Record<string, unknown>[]).map((r) => ({
+      id: Number(r.id),
+      nome: String(r.nome ?? ""),
+      role: String(r.role ?? ""),
+      naCopa: Number(r.na_copa) === 1,
+    }));
+  }),
+
+  // Atualizar lista de participantes da copa
+  setParticipantes: protectedProcedure
+    .input(z.object({ corretorIds: z.array(z.number()) }))
+    .mutation(async ({ ctx, input }) => {
+      if (!isAdminOrSuperintendente(ctx.user.role)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem gerenciar participantes" });
+      }
+      const db = await getDb();
+      await db.execute(sql`DELETE FROM copa_corretores`);
+      for (const id of input.corretorIds) {
+        await db.execute(sql`
+          INSERT INTO copa_corretores (corretor_id, selecao_id, ativo) VALUES (${id}, NULL, 1)
+        `);
+      }
+      return { success: true };
+    }),
+
+  // Realizar sorteio automático: atribui seleções aleatoriamente e monta chaveamento
+  realizarSorteio: protectedProcedure
+    .input(z.object({ confirmar: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      if (!isAdminOrSuperintendente(ctx.user.role)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem realizar o sorteio" });
+      }
+      if (!input.confirmar) return { success: false as const, message: "Confirmação necessária", participantes: 0, confrontos: 0 };
+
+      const db = await getDb();
+
+      const participantesRows = await db.execute(sql`SELECT corretor_id FROM copa_corretores ORDER BY RAND()`);
+      const selecoesRows = await db.execute(sql`SELECT id FROM copa_selecoes ORDER BY RAND()`);
+
+      const participantes = (participantesRows as unknown as Record<string, unknown>[]).map((r) => Number(r.corretor_id));
+      const selecoes = (selecoesRows as unknown as Record<string, unknown>[]).map((r) => Number(r.id));
+
+      if (participantes.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum participante cadastrado" });
+      }
+
+      for (let i = 0; i < participantes.length; i++) {
+        const selecaoId = selecoes[i % selecoes.length];
+        await db.execute(sql`UPDATE copa_corretores SET selecao_id = ${selecaoId} WHERE corretor_id = ${participantes[i]}`);
+      }
+
+      await db.execute(sql`DELETE FROM copa_confrontos`);
+
+      const faseGruposRow = await db.execute(sql`SELECT id FROM copa_fases WHERE ordem = 1 LIMIT 1`);
+      const faseGruposId = Number((faseGruposRow as unknown as Record<string, unknown>[])[0]?.id ?? 1);
+
+      let posicao = 1;
+      for (let i = 0; i < participantes.length - 1; i += 2) {
+        const a = participantes[i];
+        const b = participantes[i + 1] ?? null;
+        if (b !== null) {
+          await db.execute(sql`
+            INSERT INTO copa_confrontos (fase_id, corretor_a_id, corretor_b_id, semana_ref, posicao)
+            VALUES (${faseGruposId}, ${a}, ${b}, 1, ${posicao})
+          `);
+          posicao++;
+        }
+      }
+
+      return { success: true as const, participantes: participantes.length, confrontos: posicao - 1 };
+    }),
+
   // Definir vencedor de um confronto (apenas admin/superintendente)
   setVencedor: protectedProcedure
     .input(z.object({
