@@ -553,9 +553,10 @@ export const copaRouter = router({
       const total = Number(row?.total ?? 0);
       const completos = Number(row?.completos ?? 0);
 
-      if (total === 0) continue;
+      if (total === 0) continue; // fase sem confrontos ainda
 
       if (completos < total) {
+        // Fase em andamento
         return {
           podeAvancar: false,
           faseAtual: { id: fase.id, nome: fase.nome, total, completos },
@@ -563,9 +564,19 @@ export const copaRouter = router({
         };
       }
 
-      // Todos completos — verifica se próxima fase tem slots vazios
+      // Todos completos — verifica se próxima fase já foi preenchida
       const nextFase = fases.find(f => f.ordem === fase.ordem + 1);
       if (nextFase) {
+        const nextCount = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_confrontos WHERE faseId = ${nextFase.id}`));
+        const nextTotal = Number(nextCount[0]?.c ?? 0);
+        // Se próxima fase não tem confrontos OU tem confrontos sem corretores, pode avançar
+        if (nextTotal === 0) {
+          return {
+            podeAvancar: true,
+            faseAtual: { id: fase.id, nome: fase.nome, total, completos },
+            proximaFase: { id: nextFase.id, nome: nextFase.nome },
+          };
+        }
         const emptyRow = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_confrontos WHERE faseId = ${nextFase.id} AND corretorAId IS NULL`));
         const emptyCount = Number(emptyRow[0]?.c ?? 0);
         if (emptyCount > 0) {
@@ -575,22 +586,24 @@ export const copaRouter = router({
             proximaFase: { id: nextFase.id, nome: nextFase.nome },
           };
         }
+        // Próxima fase já preenchida, continua para ver se há fases posteriores
       }
     }
 
     return { podeAvancar: false, faseAtual: null, proximaFase: null };
   }),
 
-  // ── Avançar fase: preenche slots da próxima fase com vencedores ─────────────
+  // ── Avançar fase: cria/preenche confrontos da próxima fase com vencedores ─────────────
   avancarFase: protectedProcedure.mutation(async ({ ctx }) => {
     if (!isAdminOrSuperintendente(ctx.user.role)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem avançar fases" });
     }
     const db = await getDb();
 
-    const fases = getRows(await db.execute(sql`SELECT id, nome, ordem FROM copa_fases ORDER BY ordem`))
-      .map(r => ({ id: Number(r.id), nome: String(r.nome), ordem: Number(r.ordem) }));
+    const fases = getRows(await db.execute(sql`SELECT id, nome, tipo, ordem FROM copa_fases ORDER BY ordem`))
+      .map(r => ({ id: Number(r.id), nome: String(r.nome), tipo: String(r.tipo), ordem: Number(r.ordem) }));
 
+    // Encontrar a fase atual (com todos confrontos completos e próxima fase sem confrontos)
     let faseAtualId: number | null = null;
     let faseAtualOrdem: number | null = null;
 
@@ -607,6 +620,13 @@ export const copaRouter = router({
 
       const nextFase = fases.find(f => f.ordem === fase.ordem + 1);
       if (nextFase) {
+        const nextCountRow = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_confrontos WHERE faseId = ${nextFase.id}`));
+        const nextTotal = Number(nextCountRow[0]?.c ?? 0);
+        if (nextTotal === 0) {
+          faseAtualId = fase.id;
+          faseAtualOrdem = fase.ordem;
+          break;
+        }
         const emptyRow = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_confrontos WHERE faseId = ${nextFase.id} AND corretorAId IS NULL`));
         if (Number(emptyRow[0]?.c ?? 0) > 0) {
           faseAtualId = fase.id;
@@ -620,43 +640,190 @@ export const copaRouter = router({
       throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhuma fase pronta para avançar" });
     }
 
-    const vencedores = getRows(await db.execute(sql`SELECT vencedorId FROM copa_confrontos WHERE faseId = ${faseAtualId} AND vencedorId IS NOT NULL ORDER BY RAND()`))
-      .map(r => Number(r.vencedorId));
+    const faseAtual = fases.find(f => f.id === faseAtualId)!;
 
-    // Semifinal (ordem 4): perdedores → Disputa 3º (ordem 5), vencedores → Final (ordem 6)
-    if (faseAtualOrdem === 4) {
-      const perdedores = getRows(await db.execute(sql`
-        SELECT CASE WHEN vencedorId = corretorAId THEN corretorBId ELSE corretorAId END as perdedorId
-        FROM copa_confrontos WHERE faseId = ${faseAtualId} ORDER BY RAND()
-      `)).map(r => Number(r.perdedorId));
+    // Buscar vencedores da fase atual
+    const vencedores = getRows(await db.execute(sql`
+      SELECT vencedorId FROM copa_confrontos
+      WHERE faseId = ${faseAtualId} AND vencedorId IS NOT NULL
+      ORDER BY id
+    `)).map(r => Number(r.vencedorId));
 
-      const fase3o = fases.find(f => f.ordem === 5);
-      if (fase3o && perdedores.length >= 2) {
-        const c3oRows = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE faseId = ${fase3o.id} LIMIT 1`));
-        const c3oId = Number(c3oRows[0]?.id);
-        if (c3oId) await db.execute(sql`UPDATE copa_confrontos SET corretorAId = ${perdedores[0]}, corretorBId = ${perdedores[1]} WHERE id = ${c3oId}`);
+    // Buscar perdedores (para repescagem e 3º lugar)
+    const perdedores = getRows(await db.execute(sql`
+      SELECT CASE WHEN vencedorId = corretorAId THEN corretorBId ELSE corretorAId END as perdedorId
+      FROM copa_confrontos WHERE faseId = ${faseAtualId} AND vencedorId IS NOT NULL ORDER BY id
+    `)).map(r => Number(r.perdedorId));
+
+    // Helper: criar confronto
+    const criarConfronto = async (faseId: number, aId: number, bId: number, semana: number) => {
+      await db.execute(sql`
+        INSERT INTO copa_confrontos (faseId, corretorAId, corretorBId, semanaRef, posicao)
+        VALUES (${faseId}, ${aId}, ${bId}, ${semana}, 1)
+      `);
+    };
+
+    // Helper: atualizar confronto existente
+    const atualizarConfronto = async (confrontoId: number, aId: number, bId: number) => {
+      await db.execute(sql`UPDATE copa_confrontos SET corretorAId = ${aId}, corretorBId = ${bId} WHERE id = ${confrontoId}`);
+    };
+
+    // === FASE DE GRUPOS (ordem 1) → QUARTAS (ordem 2) + REPESCAGEM (ordem 3) ===
+    if (faseAtual.tipo === "grupos" || faseAtual.ordem === 1) {
+      // Vencedores de cada grupo avançam para Quartas
+      // Perdedores vão para Repescagem
+      const faseQuartas = fases.find(f => f.tipo === "quartas" || f.ordem === 2);
+      const faseRepescagem = fases.find(f => f.tipo === "repescagem" || f.ordem === 3);
+
+      // Calcular vencedores por grupo (1º de cada grupo + melhor 2º)
+      // Buscar pontos por corretor para determinar vencedores
+      const pontosRows = getRows(await db.execute(sql`
+        SELECT corretorId, SUM(total) as pts FROM copa_pontuacoes GROUP BY corretorId
+      `)).map(r => ({ id: Number(r.corretorId), pts: Number(r.pts ?? 0) }));
+      const ptsPorId = Object.fromEntries(pontosRows.map(p => [p.id, p.pts]));
+
+      // Buscar grupos
+      const gruposRows = getRows(await db.execute(sql`
+        SELECT cc.corretorId, cc.grupo FROM copa_corretores cc WHERE cc.ativo = 1
+      `)).map(r => ({ id: Number(r.corretorId), grupo: String(r.grupo ?? "A") }));
+
+      const grupoMap: Record<string, number[]> = {};
+      for (const g of gruposRows) {
+        if (!grupoMap[g.grupo]) grupoMap[g.grupo] = [];
+        grupoMap[g.grupo].push(g.id);
       }
 
-      const faseFinal = fases.find(f => f.ordem === 6);
+      const primeirosPorGrupo: number[] = [];
+      const segundosPorGrupo: { id: number; pts: number }[] = [];
+      const eliminados: number[] = [];
+
+      for (const [, membros] of Object.entries(grupoMap)) {
+        const sorted = membros.sort((a, b) => (ptsPorId[b] ?? 0) - (ptsPorId[a] ?? 0));
+        if (sorted.length > 0) primeirosPorGrupo.push(sorted[0]);
+        if (sorted.length > 1) segundosPorGrupo.push({ id: sorted[1], pts: ptsPorId[sorted[1]] ?? 0 });
+        for (let i = 2; i < sorted.length; i++) eliminados.push(sorted[i]);
+      }
+
+      // Melhor 2º também avança para Quartas (wild card)
+      const segundosOrdenados = segundosPorGrupo.sort((a, b) => b.pts - a.pts);
+      const wildCard = segundosOrdenados[0]?.id;
+      const repescagemIds = [
+        ...segundosOrdenados.slice(1).map(s => s.id),
+        ...eliminados,
+      ];
+
+      const quartasIds = wildCard ? [...primeirosPorGrupo, wildCard] : [...primeirosPorGrupo];
+
+      // Criar confrontos das Quartas
+      if (faseQuartas) {
+        const existingQ = getRows(await db.execute(sql`SELECT id, corretorAId FROM copa_confrontos WHERE faseId = ${faseQuartas.id}`));
+        if (existingQ.length === 0) {
+          // Criar confrontos em pares
+          for (let i = 0; i + 1 < quartasIds.length; i += 2) {
+            await criarConfronto(faseQuartas.id, quartasIds[i], quartasIds[i + 1], 3);
+          }
+          // Se ímpar, o último avança direto (bye)
+          if (quartasIds.length % 2 !== 0 && quartasIds.length > 0) {
+            await criarConfronto(faseQuartas.id, quartasIds[quartasIds.length - 1], quartasIds[quartasIds.length - 1], 3);
+          }
+        } else {
+          // Atualizar slots vazios
+          const emptySlots = existingQ.filter(r => !r.corretorAId).map(r => Number(r.id));
+          for (let i = 0; i + 1 < quartasIds.length && i / 2 < emptySlots.length; i += 2) {
+            await atualizarConfronto(emptySlots[i / 2], quartasIds[i], quartasIds[i + 1]);
+          }
+        }
+      }
+
+      // Criar confrontos da Repescagem
+      if (faseRepescagem && repescagemIds.length >= 2) {
+        const existingR = getRows(await db.execute(sql`SELECT id, corretorAId FROM copa_confrontos WHERE faseId = ${faseRepescagem.id}`));
+        if (existingR.length === 0) {
+          for (let i = 0; i + 1 < repescagemIds.length; i += 2) {
+            await criarConfronto(faseRepescagem.id, repescagemIds[i], repescagemIds[i + 1], 3);
+          }
+        }
+      }
+
+      return { success: true, proximaFase: `${faseQuartas?.nome ?? "Quartas"} + ${faseRepescagem?.nome ?? "Repescagem"}` };
+    }
+
+    // === REPESCAGEM (ordem 3) → SEMIFINAL (ordem 4) ===
+    if (faseAtual.tipo === "repescagem" || faseAtual.ordem === 3) {
+      const faseSemi = fases.find(f => f.tipo === "semifinal" || f.ordem === 4);
+      if (!faseSemi) throw new TRPCError({ code: "BAD_REQUEST", message: "Fase semifinal não encontrada" });
+
+      // Vencedores da repescagem + vencedores das quartas → Semifinal
+      const vencedoresQuartas = getRows(await db.execute(sql`
+        SELECT vencedorId FROM copa_confrontos
+        WHERE faseId = (SELECT id FROM copa_fases WHERE tipo = 'quartas' OR ordem = 2 LIMIT 1)
+        AND vencedorId IS NOT NULL ORDER BY id
+      `)).map(r => Number(r.vencedorId));
+
+      const semiIds = [...vencedoresQuartas, ...vencedores];
+
+      const existingSemi = getRows(await db.execute(sql`SELECT id, corretorAId FROM copa_confrontos WHERE faseId = ${faseSemi.id}`));
+      if (existingSemi.length === 0) {
+        for (let i = 0; i + 1 < semiIds.length; i += 2) {
+          await criarConfronto(faseSemi.id, semiIds[i], semiIds[i + 1], 4);
+        }
+      } else {
+        const emptySlots = existingSemi.filter(r => !r.corretorAId).map(r => Number(r.id));
+        for (let i = 0; i + 1 < semiIds.length && i / 2 < emptySlots.length; i += 2) {
+          await atualizarConfronto(emptySlots[i / 2], semiIds[i], semiIds[i + 1]);
+        }
+      }
+
+      return { success: true, proximaFase: faseSemi.nome };
+    }
+
+    // === QUARTAS (ordem 2) → SEMIFINAL (ordem 4) se repescagem já concluída ===
+    if (faseAtual.tipo === "quartas" || faseAtual.ordem === 2) {
+      const faseSemi = fases.find(f => f.tipo === "semifinal" || f.ordem === 4);
+      if (!faseSemi) throw new TRPCError({ code: "BAD_REQUEST", message: "Fase semifinal não encontrada" });
+
+      const existingSemi = getRows(await db.execute(sql`SELECT id, corretorAId FROM copa_confrontos WHERE faseId = ${faseSemi.id}`));
+      if (existingSemi.length === 0) {
+        for (let i = 0; i + 1 < vencedores.length; i += 2) {
+          await criarConfronto(faseSemi.id, vencedores[i], vencedores[i + 1], 4);
+        }
+      }
+
+      return { success: true, proximaFase: faseSemi.nome };
+    }
+
+    // === SEMIFINAL (ordem 4) → 3º LUGAR (ordem 5) + FINAL (ordem 6) ===
+    if (faseAtual.tipo === "semifinal" || faseAtual.ordem === 4) {
+      const fase3o = fases.find(f => f.tipo === "terceiro" || f.ordem === 5);
+      const faseFinal = fases.find(f => f.tipo === "final" || f.ordem === 6);
+
+      if (fase3o && perdedores.length >= 2) {
+        const existing3o = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE faseId = ${fase3o.id}`));
+        if (existing3o.length === 0) {
+          await criarConfronto(fase3o.id, perdedores[0], perdedores[1], 5);
+        } else {
+          await atualizarConfronto(Number(existing3o[0].id), perdedores[0], perdedores[1]);
+        }
+      }
+
       if (faseFinal && vencedores.length >= 2) {
-        const cFinalRows = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE faseId = ${faseFinal.id} LIMIT 1`));
-        const cFinalId = Number(cFinalRows[0]?.id);
-        if (cFinalId) await db.execute(sql`UPDATE copa_confrontos SET corretorAId = ${vencedores[0]}, corretorBId = ${vencedores[1]} WHERE id = ${cFinalId}`);
+        const existingFinal = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE faseId = ${faseFinal.id}`));
+        if (existingFinal.length === 0) {
+          await criarConfronto(faseFinal.id, vencedores[0], vencedores[1], 5);
+        } else {
+          await atualizarConfronto(Number(existingFinal[0].id), vencedores[0], vencedores[1]);
+        }
       }
 
       return { success: true, proximaFase: "Disputa 3º Lugar + Grande Final" };
     }
 
-    // Normal: preenche slots da próxima fase em pares
+    // Fallback genérico
     const proximaFase = fases.find(f => f.ordem === faseAtualOrdem! + 1);
     if (!proximaFase) throw new TRPCError({ code: "BAD_REQUEST", message: "Próxima fase não encontrada" });
 
-    const slotIds = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE faseId = ${proximaFase.id} AND corretorAId IS NULL ORDER BY posicao`))
-      .map(r => Number(r.id));
-
-    for (let i = 0; i < vencedores.length - 1 && i / 2 < slotIds.length; i += 2) {
-      const slotId = slotIds[i / 2];
-      await db.execute(sql`UPDATE copa_confrontos SET corretorAId = ${vencedores[i]}, corretorBId = ${vencedores[i + 1]} WHERE id = ${slotId}`);
+    for (let i = 0; i + 1 < vencedores.length; i += 2) {
+      await criarConfronto(proximaFase.id, vencedores[i], vencedores[i + 1], faseAtualOrdem! + 1);
     }
 
     return { success: true, proximaFase: proximaFase.nome };

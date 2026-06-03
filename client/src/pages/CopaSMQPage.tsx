@@ -624,56 +624,77 @@ export default function CopaSMQPage() {
           <div>
             <SectionTitle>PREMIAÇÃO OFICIAL</SectionTitle>
 
-            {/* Top 3 */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, marginBottom: 32 }}>
-              {configPremios.filter(p => p.posicao <= 3).sort((a, b) => a.posicao - b.posicao).map(p => {
-                const colors = ["#b8860b", "#9e9e9e", "#cd7f32"];
-                const bgs = ["rgba(184,134,11,0.15)", "rgba(158,158,158,0.1)", "rgba(205,127,50,0.1)"];
-                const borders = ["rgba(184,134,11,0.4)", "rgba(158,158,158,0.3)", "rgba(205,127,50,0.3)"];
-                const labels = ["CAMPEÃO", "VICE-CAMPEÃO", "3º LUGAR"];
-                const sublabels = ["OURO SMQ", "PRATA SMQ", "BRONZE SMQ"];
-                const idx = p.posicao - 1;
-                const vencedor = ranking[idx];
-                return (
-                  <div key={p.id} style={{
-                    background: bgs[idx] ?? "rgba(255,255,255,0.05)",
-                    border: `1px solid ${borders[idx] ?? "rgba(255,255,255,0.1)"}`,
-                    borderRadius: 12,
-                    padding: 28,
-                    textAlign: "center",
-                  }}>
-                    <div style={{ fontSize: 40, marginBottom: 8 }}>{p.icone}</div>
-                    <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>{labels[idx]}</div>
-                    <div style={{ color: colors[idx] ?? "#fff", fontSize: 18, fontWeight: 900, letterSpacing: 1, textTransform: "uppercase", marginBottom: 12 }}>{sublabels[idx]}</div>
-                    <div style={{ color: "#fff", fontSize: 24, fontWeight: 900 }}>
-                      {vencedor && vencedor.totalPontos > 0 ? shortName(vencedor.nome) : "A definir"}
-                    </div>
-                    <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, marginTop: 8 }}>{p.descricao}</div>
-                    <div style={{ color: colors[idx] ?? "#fff", fontSize: 22, fontWeight: 900, marginTop: 12 }}>{p.valor}</div>
+            {/* Prêmios principais (ordem 3 = 3º lugar, 4 = vice, 5 = campeão) */}
+            {(() => {
+              // Identificar campeão, vice e 3º lugar pelos nomes da posição ou pela ordem (maior = mais importante)
+              const sorted = [...configPremios].sort((a, b) => b.ordem - a.ordem);
+              const campeao = sorted.find(p => String(p.posicao).toLowerCase().includes("campe") && !String(p.posicao).toLowerCase().includes("vice")) ?? sorted[0];
+              const vice = sorted.find(p => String(p.posicao).toLowerCase().includes("vice")) ?? sorted[1];
+              const terceiro = sorted.find(p => String(p.posicao).toLowerCase().includes("3") || String(p.posicao).toLowerCase().includes("terceiro")) ?? sorted[2];
+              const podio = [campeao, vice, terceiro].filter(Boolean) as typeof configPremios;
+              const bons = configPremios.filter(p => p !== campeao && p !== vice && p !== terceiro);
+              const colors = ["#b8860b", "#9e9e9e", "#cd7f32"];
+              const bgs = ["rgba(184,134,11,0.15)", "rgba(158,158,158,0.1)", "rgba(205,127,50,0.1)"];
+              const borders = ["rgba(184,134,11,0.4)", "rgba(158,158,158,0.3)", "rgba(205,127,50,0.3)"];
+              const labels = ["CAMPEÃO", "VICE-CAMPEÃO", "3º LUGAR"];
+              const sublabels = ["OURO SMQ", "PRATA SMQ", "BRONZE SMQ"];
+              return (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${podio.length}, 1fr)`, gap: 20, marginBottom: 32 }}>
+                    {podio.map((p, idx) => {
+                      const vencedor = ranking[idx];
+                      return (
+                        <div key={p.id} style={{
+                          background: bgs[idx] ?? "rgba(255,255,255,0.05)",
+                          border: `1px solid ${borders[idx] ?? "rgba(255,255,255,0.1)"}`,
+                          borderRadius: 12,
+                          padding: 28,
+                          textAlign: "center",
+                        }}>
+                          <div style={{ fontSize: 40, marginBottom: 8 }}>{p.icone}</div>
+                          <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>{labels[idx]}</div>
+                          <div style={{ color: colors[idx] ?? "#fff", fontSize: 18, fontWeight: 900, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>{sublabels[idx]}</div>
+                          <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, marginBottom: 12 }}>{p.posicao}</div>
+                          <div style={{ color: "#fff", fontSize: 24, fontWeight: 900 }}>
+                            {vencedor && vencedor.totalPontos > 0 ? shortName(vencedor.nome) : "A definir"}
+                          </div>
+                          <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, marginTop: 8 }}>{p.descricao}</div>
+                          <div style={{ color: colors[idx] ?? "#fff", fontSize: 22, fontWeight: 900, marginTop: 12 }}>{p.valor}</div>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
 
-            {/* Bônus por fase */}
-            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: 24, marginBottom: 24 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-                <span style={{ fontSize: 20 }}>🎁</span>
-                <span style={{ color: "#009c3b", fontSize: 16, fontWeight: 900, letterSpacing: 2, textTransform: "uppercase" }}>BÔNUS POR AVANÇO DE FASE</span>
-              </div>
-              {configPremios.filter(p => p.posicao > 3).sort((a, b) => a.ordem - b.ordem).map(p => (
-                <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 18 }}>{p.icone}</span>
-                    <span style={{ color: "#fff", fontSize: 14 }}>{p.descricao}</span>
-                  </div>
-                  <span style={{ color: "#009c3b", fontSize: 16, fontWeight: 900 }}>{p.valor}</span>
-                </div>
-              ))}
-              {configPremios.filter(p => p.posicao > 3).length === 0 && (
-                <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 13 }}>Nenhum bônus configurado.</div>
-              )}
-            </div>
+                  {/* Bônus por fase */}
+                  {bons.length > 0 && (
+                    <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: 24, marginBottom: 24 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                        <span style={{ fontSize: 20 }}>🎁</span>
+                        <span style={{ color: "#009c3b", fontSize: 16, fontWeight: 900, letterSpacing: 2, textTransform: "uppercase" }}>BÔNUS POR AVANÇO DE FASE</span>
+                      </div>
+                      {bons.sort((a, b) => a.ordem - b.ordem).map(p => (
+                        <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <span style={{ fontSize: 18 }}>{p.icone}</span>
+                            <div>
+                              <div style={{ color: "#fff", fontSize: 14, fontWeight: 600 }}>{p.posicao}</div>
+                              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 12 }}>{p.descricao}</div>
+                            </div>
+                          </div>
+                          <span style={{ color: "#009c3b", fontSize: 16, fontWeight: 900 }}>{p.valor}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {configPremios.length === 0 && (
+                    <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: 24, marginBottom: 24 }}>
+                      <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 13 }}>Nenhum prêmio configurado. Configure no painel Admin.</div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             <div style={{ background: "rgba(255,223,0,0.05)", border: "1px solid rgba(255,223,0,0.2)", borderRadius: 8, padding: 16, fontSize: 13, color: "rgba(255,255,255,0.5)" }}>
               💡 <strong style={{ color: "#ffdf00" }}>Prêmios definidos pelo gestor.</strong> Configure os valores no painel Admin.
