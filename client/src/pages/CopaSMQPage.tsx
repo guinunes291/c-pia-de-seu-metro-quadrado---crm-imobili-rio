@@ -1173,10 +1173,32 @@ function ConfrontoCard({ confronto, nomeCorretor, selecaoCorretor, ptsPorCorreto
   selecaoCorretor: (id: number | null) => { nome: string; bandeira: string } | null;
   ptsPorCorretor: (id: number | null) => number;
 }) {
+  const isWO = confronto.corretorBId === null;
   const selA = selecaoCorretor(confronto.corretorAId);
   const selB = selecaoCorretor(confronto.corretorBId);
   const isVencedorA = confronto.vencedorId != null && confronto.vencedorId === confronto.corretorAId;
   const isVencedorB = confronto.vencedorId != null && confronto.vencedorId === confronto.corretorBId;
+
+  if (isWO) {
+    // Confronto W.O. — vitória automática sem adversário
+    return (
+      <div style={{ background: "rgba(0,156,59,0.06)", border: "1px solid rgba(0,156,59,0.3)", borderRadius: 8, overflow: "hidden", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "rgba(0,156,59,0.1)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 22 }}>{selA?.bandeira ?? "🏳️"}</span>
+            <div>
+              <div style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>{selA?.nome ?? "A definir"}</div>
+              <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>{nomeCorretor(confronto.corretorAId)}</div>
+            </div>
+          </div>
+          <div style={{ color: "#009c3b", fontSize: 16, fontWeight: 900 }}>+20 pts</div>
+        </div>
+        <div style={{ padding: "8px 16px", background: "rgba(0,0,0,0.2)", textAlign: "center", color: "#009c3b", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", fontWeight: 700 }}>
+          🏆 W.O. — Vitória automática (sem adversário nesta semana)
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, overflow: "hidden", marginBottom: 12 }}>
