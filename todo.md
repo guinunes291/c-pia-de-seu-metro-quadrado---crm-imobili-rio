@@ -5602,3 +5602,13 @@
 - [x] Badge ciano no ícone de Agendamentos mostrando quantidade de agendamentos do dia
 - [x] Badge visível apenas para corretores com agendamentos hoje
 - [x] Componente AgendBadge reutilizável
+
+## Bug Fix: Copa SMQ - Campos undefined e funcionalidades quebradas
+- [x] Corrigir backend copa.ts: db.execute() retorna [rows, fields] — adicionar helper getRows()
+- [x] Corrigir getConfigPremios retornando undefined (campos posicao, descricao, valor, icone)
+- [x] Corrigir getConfigPontos retornando undefined (campos chave, label, pontos)
+- [x] Corrigir getCorretoresDisponiveis retornando lista vazia (campos id, nome, role, naCopa)
+- [x] Corrigir edição de pontuação por atividade (updateConfigPontos)
+- [x] Corrigir edição de prêmios (updateConfigPremio)
+- [x] Corrigir seleção de participantes para sorteio (setParticipantes)
+- [x] Automatizar criação do chaveamento após sorteio (realizarSorteio)

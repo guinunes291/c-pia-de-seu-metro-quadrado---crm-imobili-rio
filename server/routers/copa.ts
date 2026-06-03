@@ -8,6 +8,20 @@ function isAdminOrSuperintendente(role: string) {
   return role === "admin" || role === "superintendente";
 }
 
+/**
+ * Helper: db.execute() com Drizzle + mysql2 retorna [rows, fields].
+ * Esta função extrai apenas o array de rows de forma segura.
+ */
+function getRows(result: unknown): Record<string, unknown>[] {
+  if (Array.isArray(result) && result.length >= 1 && Array.isArray(result[0])) {
+    return result[0] as Record<string, unknown>[];
+  }
+  if (Array.isArray(result)) {
+    return result as Record<string, unknown>[];
+  }
+  return [];
+}
+
 export const copaRouter = router({
   // Dados gerais da copa (seleções, fases, confrontos, corretores)
   getDados: protectedProcedure.query(async () => {
@@ -47,7 +61,6 @@ export const copaRouter = router({
       semanaFim: row.semana_fim ? String(row.semana_fim) : null,
     });
 
-    // Bug 5 fix: include semana_ref in mapConfronto
     const mapConfronto = (row: Record<string, unknown>) => ({
       id: Number(row.id),
       faseId: Number(row.fase_id),
@@ -58,14 +71,14 @@ export const copaRouter = router({
     });
 
     return {
-      selecoes: (selecoes as unknown as Record<string, unknown>[]).map(mapSelecao),
-      fases: (fases as unknown as Record<string, unknown>[]).map(mapFase),
-      confrontos: (confrontos as unknown as Record<string, unknown>[]).map(mapConfronto),
-      corretoresCopa: (corretoresCopa as unknown as Record<string, unknown>[]).map(mapCorretor),
+      selecoes: getRows(selecoes).map(mapSelecao),
+      fases: getRows(fases).map(mapFase),
+      confrontos: getRows(confrontos).map(mapConfronto),
+      corretoresCopa: getRows(corretoresCopa).map(mapCorretor),
     };
   }),
 
-  // Bug 4 fix: use UTC offset for BRT timezone (03:00 UTC = 00:00 BRT)
+  // Semana atual (BRT = UTC-3)
   getSemanaAtual: protectedProcedure.query(async () => {
     const inicio = new Date("2026-06-03T03:00:00.000Z");
     const agora = new Date();
@@ -79,9 +92,9 @@ export const copaRouter = router({
   getRanking: protectedProcedure.query(async () => {
     const db = await getDb();
 
-    const configPontosRows = await db.execute(sql`SELECT chave, pontos FROM copa_config_pontos`);
+    const configResult = await db.execute(sql`SELECT chave, pontos FROM copa_config_pontos`);
     const configMap: Record<string, number> = {};
-    for (const row of configPontosRows as unknown as Record<string, unknown>[]) {
+    for (const row of getRows(configResult)) {
       configMap[String(row.chave)] = Number(row.pontos);
     }
     const ptAgendamento = configMap["agendamentos"] ?? 25;
@@ -92,7 +105,7 @@ export const copaRouter = router({
     const COPA_INICIO = "2026-06-03 00:00:00";
     const COPA_FIM = "2026-07-26 23:59:59";
 
-    const rows = await db.execute(sql`
+    const rankingResult = await db.execute(sql`
       SELECT
         cc.corretor_id,
         u.name as nome,
@@ -146,7 +159,7 @@ export const copaRouter = router({
       ORDER BY u.name ASC
     `);
 
-    const result = (rows as unknown as Record<string, unknown>[]).map((r) => {
+    const result = getRows(rankingResult).map((r) => {
       const totalAgendamentos = Number(r.crm_agendamentos) + Number(r.manual_agendamentos);
       const totalVisitas = Number(r.crm_visitas) + Number(r.manual_visitas);
       const totalDocumentacao = Number(r.crm_documentacao) + Number(r.manual_documentacao);
@@ -180,13 +193,14 @@ export const copaRouter = router({
 
   getStats: protectedProcedure.query(async () => {
     const db = await getDb();
-    const [countRow] = await db.execute(sql`SELECT COUNT(*) as total FROM copa_corretores`);
+    const countResult = await db.execute(sql`SELECT COUNT(*) as total FROM copa_corretores`);
+    const countRows = getRows(countResult);
     return {
-      corretores: Number((countRow as Record<string, unknown>).total ?? 0),
+      corretores: Number(countRows[0]?.total ?? 0),
     };
   }),
 
-  // Bug 3 fix: fetch copa_config_pontos before calculating total instead of using hardcoded values
+  // Lançar pontuação manual
   salvarPontuacao: protectedProcedure
     .input(z.object({
       corretorId: z.number(),
@@ -203,9 +217,9 @@ export const copaRouter = router({
 
       const db = await getDb();
 
-      const configRows = await db.execute(sql`SELECT chave, pontos FROM copa_config_pontos`);
+      const configResult = await db.execute(sql`SELECT chave, pontos FROM copa_config_pontos`);
       const configMap: Record<string, number> = {};
-      for (const row of configRows as unknown as Record<string, unknown>[]) {
+      for (const row of getRows(configResult)) {
         configMap[String(row.chave)] = Number(row.pontos);
       }
 
@@ -232,8 +246,8 @@ export const copaRouter = router({
 
   getConfigPontos: protectedProcedure.query(async () => {
     const db = await getDb();
-    const rows = await db.execute(sql`SELECT * FROM copa_config_pontos ORDER BY id`);
-    return (rows as unknown as Record<string, unknown>[]).map((r) => ({
+    const result = await db.execute(sql`SELECT * FROM copa_config_pontos ORDER BY id`);
+    return getRows(result).map((r) => ({
       id: Number(r.id),
       chave: String(r.chave),
       label: String(r.label),
@@ -254,8 +268,8 @@ export const copaRouter = router({
 
   getConfigPremios: protectedProcedure.query(async () => {
     const db = await getDb();
-    const rows = await db.execute(sql`SELECT * FROM copa_config_premios ORDER BY ordem`);
-    return (rows as unknown as Record<string, unknown>[]).map((r) => ({
+    const result = await db.execute(sql`SELECT * FROM copa_config_premios ORDER BY ordem`);
+    return getRows(result).map((r) => ({
       id: Number(r.id),
       posicao: String(r.posicao),
       descricao: String(r.descricao),
@@ -280,9 +294,12 @@ export const copaRouter = router({
       return { success: true };
     }),
 
-  getCorretoresDisponiveis: protectedProcedure.query(async () => {
+  getCorretoresDisponiveis: protectedProcedure.query(async ({ ctx }) => {
+    if (!isAdminOrSuperintendente(ctx.user.role)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem ver corretores disponíveis" });
+    }
     const db = await getDb();
-    const rows = await db.execute(sql`
+    const result = await db.execute(sql`
       SELECT u.id, u.name as nome, u.role,
         CASE WHEN cc.id IS NOT NULL THEN 1 ELSE 0 END as na_copa
       FROM users u
@@ -290,7 +307,7 @@ export const copaRouter = router({
       WHERE u.role IN ('corretor', 'gestor', 'superintendente')
       ORDER BY u.name
     `);
-    return (rows as unknown as Record<string, unknown>[]).map((r) => ({
+    return getRows(result).map((r) => ({
       id: Number(r.id),
       nome: String(r.nome ?? ""),
       role: String(r.role ?? ""),
@@ -311,7 +328,7 @@ export const copaRouter = router({
           INSERT INTO copa_corretores (corretor_id, selecao_id, ativo) VALUES (${id}, NULL, 1)
         `);
       }
-      return { success: true };
+      return { success: true, total: input.corretorIds.length };
     }),
 
   realizarSorteio: protectedProcedure
@@ -324,25 +341,28 @@ export const copaRouter = router({
 
       const db = await getDb();
 
-      const participantesRows = await db.execute(sql`SELECT corretor_id FROM copa_corretores ORDER BY RAND()`);
-      const selecoesRows = await db.execute(sql`SELECT id FROM copa_selecoes ORDER BY RAND()`);
+      const participantesResult = await db.execute(sql`SELECT corretor_id FROM copa_corretores ORDER BY RAND()`);
+      const selecoesResult = await db.execute(sql`SELECT id FROM copa_selecoes ORDER BY RAND()`);
 
-      const participantes = (participantesRows as unknown as Record<string, unknown>[]).map((r) => Number(r.corretor_id));
-      const selecoes = (selecoesRows as unknown as Record<string, unknown>[]).map((r) => Number(r.id));
+      const participantes = getRows(participantesResult).map((r) => Number(r.corretor_id));
+      const selecoes = getRows(selecoesResult).map((r) => Number(r.id));
 
       if (participantes.length === 0) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum participante cadastrado" });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum participante cadastrado. Salve os participantes primeiro." });
       }
 
+      // Atribuir seleções aleatórias
       for (let i = 0; i < participantes.length; i++) {
         const selecaoId = selecoes[i % selecoes.length];
         await db.execute(sql`UPDATE copa_corretores SET selecao_id = ${selecaoId} WHERE corretor_id = ${participantes[i]}`);
       }
 
+      // Recriar confrontos da fase de grupos
       await db.execute(sql`DELETE FROM copa_confrontos`);
 
-      const faseGruposRow = await db.execute(sql`SELECT id FROM copa_fases WHERE ordem = 1 LIMIT 1`);
-      const faseGruposId = Number((faseGruposRow as unknown as Record<string, unknown>[])[0]?.id ?? 1);
+      const faseResult = await db.execute(sql`SELECT id FROM copa_fases WHERE ordem = 1 LIMIT 1`);
+      const faseRows = getRows(faseResult);
+      const faseGruposId = Number(faseRows[0]?.id ?? 1);
 
       let posicao = 1;
       for (let i = 0; i < participantes.length - 1; i += 2) {
@@ -376,13 +396,13 @@ export const copaRouter = router({
       return { success: true };
     }),
 
-  // New: last 50 manual pontuacao entries with corretor name
+  // Últimas 50 pontuações manuais com nome do corretor
   getHistoricoPontuacoes: protectedProcedure.query(async ({ ctx }) => {
     if (!isAdminOrSuperintendente(ctx.user.role)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem ver o histórico" });
     }
     const db = await getDb();
-    const rows = await db.execute(sql`
+    const result = await db.execute(sql`
       SELECT cp.id, cp.corretor_id, cp.semana, cp.agendamentos, cp.visitas,
              cp.documentacao, cp.vendas, cp.total_pontos, cp.updated_at,
              u.name as nome_corretor
@@ -391,7 +411,7 @@ export const copaRouter = router({
       ORDER BY cp.updated_at DESC
       LIMIT 50
     `);
-    return (rows as unknown as Record<string, unknown>[]).map((r) => ({
+    return getRows(result).map((r) => ({
       id: Number(r.id),
       corretorId: Number(r.corretor_id),
       nomeCorretor: String(r.nome_corretor ?? ""),
@@ -405,7 +425,7 @@ export const copaRouter = router({
     }));
   }),
 
-  // New: delete a pontuacao entry by id
+  // Excluir lançamento manual por ID
   deletePontuacao: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
@@ -417,16 +437,16 @@ export const copaRouter = router({
       return { success: true };
     }),
 
-  // New: weekly points breakdown for the logged-in user
+  // Breakdown semanal de pontos do usuário logado
   getMeusPontosSemana: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
-    const rows = await db.execute(sql`
+    const result = await db.execute(sql`
       SELECT semana, total_pontos
       FROM copa_pontuacoes
       WHERE corretor_id = ${ctx.user.id}
       ORDER BY semana
     `);
-    return (rows as unknown as Record<string, unknown>[]).map((r) => ({
+    return getRows(result).map((r) => ({
       semana: Number(r.semana),
       totalPontos: Number(r.total_pontos),
     }));
