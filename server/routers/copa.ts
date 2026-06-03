@@ -54,6 +54,7 @@ export const copaRouter = router({
       selecaoId: row.selecaoId ? Number(row.selecaoId) : null,
       selecaoNome: row.selecaoNome ? String(row.selecaoNome) : null,
       selecaoBandeira: row.selecaoBandeira ? String(row.selecaoBandeira) : null,
+      grupo: row.grupo ? String(row.grupo) : null,
     });
 
     const mapSelecao = (row: Record<string, unknown>) => ({
@@ -280,7 +281,7 @@ export const copaRouter = router({
     const result = await db.execute(sql`SELECT * FROM copa_config_premios ORDER BY ordem`);
     return getRows(result).map((r) => ({
       id: Number(r.id),
-      posicao: String(r.posicao),
+      posicao: Number(r.posicao),
       descricao: String(r.descricao),
       valor: String(r.valor),
       icone: String(r.icone),
@@ -289,7 +290,7 @@ export const copaRouter = router({
   }),
 
   updateConfigPremio: protectedProcedure
-    .input(z.object({ id: z.number(), posicao: z.string(), descricao: z.string(), valor: z.string(), icone: z.string() }))
+    .input(z.object({ id: z.number(), descricao: z.string(), valor: z.string(), icone: z.string() }))
     .mutation(async ({ ctx, input }) => {
       if (!isAdminOrSuperintendente(ctx.user.role)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem editar prêmios" });
@@ -297,7 +298,7 @@ export const copaRouter = router({
       const db = await getDb();
       await db.execute(sql`
         UPDATE copa_config_premios
-        SET posicao = ${input.posicao}, descricao = ${input.descricao}, valor = ${input.valor}, icone = ${input.icone}
+        SET descricao = ${input.descricao}, valor = ${input.valor}, icone = ${input.icone}
         WHERE id = ${input.id}
       `);
       return { success: true };

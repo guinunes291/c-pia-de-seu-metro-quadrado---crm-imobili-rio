@@ -7,7 +7,7 @@ import { toast } from "sonner";
 interface Selecao { id: number; nome: string; bandeira: string; }
 interface Fase { id: number; nome: string; ordem: number; semanaInicio: string | null; semanaFim: string | null; }
 interface Confronto { id: number; faseId: number; corretorAId: number | null; corretorBId: number | null; vencedorId: number | null; semanaRef: number | null; }
-interface CorretorCopa { corretorId: number; nome: string; selecaoId: number | null; selecaoNome: string | null; selecaoBandeira: string | null; grupo?: string; }
+interface CorretorCopa { corretorId: number; nome: string; selecaoId: number | null; selecaoNome: string | null; selecaoBandeira: string | null; grupo?: string | null; }
 interface CorretorDisponivel { id: number; nome: string; role: string; naCopa: boolean; }
 interface ConfigPonto { id: number; chave: string; label: string; pontos: number; }
 interface ConfigPremio { id: number; posicao: number; descricao: string; valor: string; icone: string; ordem: number; }
@@ -106,7 +106,7 @@ export default function CopaSMQPage() {
   const utils = trpc.useUtils();
 
   // ── Dados derivados ──
-  const corretoresCopa = useMemo(() => (dados?.corretoresCopa ?? []) as (CorretorCopa & { grupo?: string })[], [dados]);
+  const corretoresCopa = useMemo(() => (dados?.corretoresCopa ?? []) as (CorretorCopa & { grupo?: string | null })[], [dados]);
   const fases = useMemo(() => dados?.fases ?? [], [dados]);
   const confrontos = useMemo(() => dados?.confrontos ?? [], [dados]);
 
@@ -126,7 +126,7 @@ export default function CopaSMQPage() {
 
   // Grupos
   const grupos = useMemo(() => {
-    const map: Record<string, (CorretorCopa & { grupo?: string })[]> = {};
+    const map: Record<string, (CorretorCopa & { grupo?: string | null })[]> = {};
     for (const c of corretoresCopa) {
       const g = c.grupo ?? "?";
       if (!map[g]) map[g] = [];
@@ -134,7 +134,7 @@ export default function CopaSMQPage() {
     }
     return map;
   }, [corretoresCopa]);
-  const gruposOrdenados = useMemo(() => Object.keys(grupos).sort(), [grupos]);
+  const gruposOrdenados = useMemo(() => Object.keys(grupos).filter(g => g !== "?").sort(), [grupos]);
 
   // Fases específicas
   const faseGrupos = fases.find(f => f.ordem === 1 || f.nome?.toLowerCase().includes("grupo"));
@@ -143,6 +143,17 @@ export default function CopaSMQPage() {
   const faseSemi = fases.find(f => f.nome?.toLowerCase().includes("semi"));
   const faseTerceiro = fases.find(f => f.nome?.toLowerCase().includes("3") || f.nome?.toLowerCase().includes("terceiro"));
   const faseFinal = fases.find(f => f.nome?.toLowerCase().includes("final") && !f.nome?.toLowerCase().includes("semi") && !f.nome?.toLowerCase().includes("3"));
+
+  // Meus confrontos (fase de grupos) — filtrado pelo corretor logado
+  const meusConfrontos = useMemo(() => {
+    if (!user?.id) return [];
+    const myId = Number(user.id);
+    const fgId = faseGrupos?.id ?? 1;
+    return confrontos.filter(c =>
+      c.faseId === fgId &&
+      (Number(c.corretorAId) === myId || Number(c.corretorBId) === myId)
+    );
+  }, [confrontos, user?.id, faseGrupos]);
 
   function confrontosDaFase(faseId: number) {
     return confrontos.filter(c => c.faseId === faseId && (c.corretorAId || c.corretorBId));
@@ -355,6 +366,76 @@ export default function CopaSMQPage() {
                       semanaAtual={semanaAtual}
                     />
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Meus Confrontos — visível apenas para corretores (não admin) */}
+            {!isAdmin && meusConfrontos.length > 0 && (
+              <div style={{ marginBottom: 48 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                  <div style={{ width: 4, height: 28, background: "#009c3b", borderRadius: 2 }} />
+                  <div style={{ color: "#fff", fontSize: 18, fontWeight: 900, letterSpacing: 2, textTransform: "uppercase" }}>⚽ MEUS CONFRONTOS</div>
+                  <div style={{ background: "rgba(0,156,59,0.15)", border: "1px solid rgba(0,156,59,0.3)", borderRadius: 20, padding: "4px 12px", color: "#009c3b", fontSize: 12, fontWeight: 700 }}>
+                    {meusConfrontos.length} duelos
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {meusConfrontos.map(c => {
+                    const isA = Number(c.corretorAId) === Number(user?.id);
+                    const myId = isA ? c.corretorAId : c.corretorBId;
+                    const oppId = isA ? c.corretorBId : c.corretorAId;
+                    const selMy = selecaoCorretor(myId);
+                    const selOpp = selecaoCorretor(oppId);
+                    const ptsMy = ptsPorCorretor(myId);
+                    const ptsOpp = ptsPorCorretor(oppId);
+                    const venceu = c.vencedorId && Number(c.vencedorId) === Number(myId);
+                    const perdeu = c.vencedorId && Number(c.vencedorId) !== Number(myId);
+                    return (
+                      <div key={c.id} style={{
+                        background: venceu ? "rgba(0,156,59,0.12)" : perdeu ? "rgba(229,62,62,0.08)" : "rgba(255,255,255,0.04)",
+                        border: `1px solid ${venceu ? "rgba(0,156,59,0.4)" : perdeu ? "rgba(229,62,62,0.3)" : "rgba(255,255,255,0.1)"}`,
+                        borderRadius: 10,
+                        padding: "16px 20px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 16,
+                      }}>
+                        {/* Minha seleção */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+                          <span style={{ fontSize: 32 }}>{selMy?.bandeira ?? "🏳️"}</span>
+                          <div>
+                            <div style={{ color: "#009c3b", fontSize: 13, fontWeight: 700 }}>{selMy?.nome ?? "Você"}</div>
+                            <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11 }}>Você</div>
+                          </div>
+                        </div>
+                        {/* Placar */}
+                        <div style={{ textAlign: "center", minWidth: 80 }}>
+                          <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>SEM {c.semanaRef ?? 1}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+                            <span style={{ color: venceu ? "#009c3b" : "#fff", fontSize: 22, fontWeight: 900 }}>{ptsMy}</span>
+                            <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 14 }}>×</span>
+                            <span style={{ color: perdeu ? "#e53e3e" : "#fff", fontSize: 22, fontWeight: 900 }}>{ptsOpp}</span>
+                          </div>
+                          {c.vencedorId ? (
+                            <div style={{ color: venceu ? "#009c3b" : "#e53e3e", fontSize: 11, fontWeight: 700, marginTop: 4 }}>
+                              {venceu ? "✅ VITÓRIA" : "❌ DERROTA"}
+                            </div>
+                          ) : (
+                            <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 11, marginTop: 4 }}>EM ANDAMENTO</div>
+                          )}
+                        </div>
+                        {/* Adversário */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, justifyContent: "flex-end" }}>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>{selOpp?.nome ?? "A definir"}</div>
+                            <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11 }}>{nomeCorretor(oppId)}</div>
+                          </div>
+                          <span style={{ fontSize: 32 }}>{selOpp?.bandeira ?? "🏳️"}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
