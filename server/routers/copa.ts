@@ -75,9 +75,25 @@ export const copaRouter = router({
     return { semana };
   }),
 
-  // Ranking geral (pontuação acumulada)
+  // Ranking geral — calculado em tempo real com dados do CRM (a partir de 03/06/2026)
+  // + pontuação manual lançada pelo admin (bônus/correções)
   getRanking: protectedProcedure.query(async () => {
     const db = await getDb();
+
+    // Buscar tabela de pontos configurada (fallback para valores padrão)
+    const configPontosRows = await db.execute(sql`SELECT chave, pontos FROM copa_config_pontos`);
+    const configMap: Record<string, number> = {};
+    for (const row of configPontosRows as unknown as Record<string, unknown>[]) {
+      configMap[String(row.chave)] = Number(row.pontos);
+    }
+    const ptAgendamento = configMap["agendamentos"] ?? 25;
+    const ptVisita = configMap["visitas"] ?? 40;
+    const ptDocumentacao = configMap["documentacao"] ?? 60;
+    const ptVenda = configMap["vendas"] ?? 150;
+
+    const COPA_INICIO = "2026-06-03 00:00:00";
+    const COPA_FIM = "2026-07-26 23:59:59";
+
     const rows = await db.execute(sql`
       SELECT 
         cc.corretor_id,
@@ -85,32 +101,89 @@ export const copaRouter = router({
         s.nome as selecao_nome,
         s.bandeira as selecao_bandeira,
         s.id as selecao_id,
-        COALESCE(SUM(cp.agendamentos), 0) as total_agendamentos,
-        COALESCE(SUM(cp.visitas), 0) as total_visitas,
-        COALESCE(SUM(cp.documentacao), 0) as total_documentacao,
-        COALESCE(SUM(cp.vendas), 0) as total_vendas,
-        COALESCE(SUM(cp.agendamentos * 25 + cp.visitas * 40 + cp.documentacao * 60 + cp.vendas * 150), 0) as total_pontos
+
+        -- Agendamentos criados na Copa (tabela agendamentos, data de criação)
+        COALESCE((
+          SELECT COUNT(*)
+          FROM agendamentos a
+          WHERE a.corretorId = cc.corretor_id
+            AND a.createdAt >= ${COPA_INICIO}
+            AND a.createdAt <= ${COPA_FIM}
+        ), 0) as crm_agendamentos,
+
+        -- Visitas realizadas na Copa (transição para visita_realizada)
+        COALESCE((
+          SELECT COUNT(*)
+          FROM lead_status_transitions lst
+          WHERE lst.corretorId = cc.corretor_id
+            AND lst.statusNovo = 'visita_realizada'
+            AND lst.createdAt >= ${COPA_INICIO}
+            AND lst.createdAt <= ${COPA_FIM}
+        ), 0) as crm_visitas,
+
+        -- Análises de crédito na Copa (transição para analise_credito)
+        COALESCE((
+          SELECT COUNT(*)
+          FROM lead_status_transitions lst
+          WHERE lst.corretorId = cc.corretor_id
+            AND lst.statusNovo = 'analise_credito'
+            AND lst.createdAt >= ${COPA_INICIO}
+            AND lst.createdAt <= ${COPA_FIM}
+        ), 0) as crm_documentacao,
+
+        -- Contratos fechados na Copa (transição para contrato_fechado)
+        COALESCE((
+          SELECT COUNT(*)
+          FROM lead_status_transitions lst
+          WHERE lst.corretorId = cc.corretor_id
+            AND lst.statusNovo = 'contrato_fechado'
+            AND lst.createdAt >= ${COPA_INICIO}
+            AND lst.createdAt <= ${COPA_FIM}
+        ), 0) as crm_vendas,
+
+        -- Pontuação manual (bônus/correções lançadas pelo admin)
+        COALESCE((SELECT SUM(cp.agendamentos) FROM copa_pontuacoes cp WHERE cp.corretor_id = cc.corretor_id), 0) as manual_agendamentos,
+        COALESCE((SELECT SUM(cp.visitas) FROM copa_pontuacoes cp WHERE cp.corretor_id = cc.corretor_id), 0) as manual_visitas,
+        COALESCE((SELECT SUM(cp.documentacao) FROM copa_pontuacoes cp WHERE cp.corretor_id = cc.corretor_id), 0) as manual_documentacao,
+        COALESCE((SELECT SUM(cp.vendas) FROM copa_pontuacoes cp WHERE cp.corretor_id = cc.corretor_id), 0) as manual_vendas
+
       FROM copa_corretores cc
       JOIN users u ON u.id = cc.corretor_id
       LEFT JOIN copa_selecoes s ON s.id = cc.selecao_id
-      LEFT JOIN copa_pontuacoes cp ON cp.corretor_id = cc.corretor_id
-      GROUP BY cc.corretor_id, u.name, s.nome, s.bandeira, s.id
-      ORDER BY total_pontos DESC, u.name ASC
+      ORDER BY u.name ASC
     `);
 
-    return (rows as unknown as Record<string, unknown>[]).map((r, i) => ({
-      posicao: i + 1,
-      corretorId: Number(r.corretor_id),
-      nome: String(r.nome ?? ""),
-      selecao: r.selecao_id
-        ? { id: Number(r.selecao_id), nome: String(r.selecao_nome ?? ""), bandeira: String(r.selecao_bandeira ?? "🏳️") }
-        : null,
-      totalAgendamentos: Number(r.total_agendamentos),
-      totalVisitas: Number(r.total_visitas),
-      totalDocumentacao: Number(r.total_documentacao),
-      totalVendas: Number(r.total_vendas),
-      totalPontos: Number(r.total_pontos),
-    }));
+    const result = (rows as unknown as Record<string, unknown>[]).map((r) => {
+      const totalAgendamentos = Number(r.crm_agendamentos) + Number(r.manual_agendamentos);
+      const totalVisitas = Number(r.crm_visitas) + Number(r.manual_visitas);
+      const totalDocumentacao = Number(r.crm_documentacao) + Number(r.manual_documentacao);
+      const totalVendas = Number(r.crm_vendas) + Number(r.manual_vendas);
+      const totalPontos =
+        totalAgendamentos * ptAgendamento +
+        totalVisitas * ptVisita +
+        totalDocumentacao * ptDocumentacao +
+        totalVendas * ptVenda;
+
+      return {
+        posicao: 0, // será preenchido após ordenação
+        corretorId: Number(r.corretor_id),
+        nome: String(r.nome ?? ""),
+        selecao: r.selecao_id
+          ? { id: Number(r.selecao_id), nome: String(r.selecao_nome ?? ""), bandeira: String(r.selecao_bandeira ?? "🏳️") }
+          : null,
+        totalAgendamentos,
+        totalVisitas,
+        totalDocumentacao,
+        totalVendas,
+        totalPontos,
+      };
+    });
+
+    // Ordenar por pontos desc, nome asc e atribuir posição
+    result.sort((a, b) => b.totalPontos - a.totalPontos || a.nome.localeCompare(b.nome));
+    result.forEach((r, i) => { r.posicao = i + 1; });
+
+    return result;
   }),
 
   // Estatísticas gerais
