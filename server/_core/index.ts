@@ -125,7 +125,7 @@ async function startServer() {
     // Inicializar jobs de distribuição automática
     import("../distribuicaoJob").then(({ agendarDistribuicaoAutomatica }) => {
       agendarDistribuicaoAutomatica();
-      console.log("[Job] Distribuição automática inicializada (a cada 5 minutos)");
+      console.log("[Job] Distribuição automática inicializada (a cada 10 minutos)");
     }).catch(err => {
       console.error("[Job] Erro ao inicializar job de distribuição:", err);
     });
@@ -152,7 +152,7 @@ async function startServer() {
     // Inicializar job de transferência automática de leads (a cada 30 segundos)
     import("../transferenciaJob").then(({ agendarTransferenciaAutomatica }) => {
       agendarTransferenciaAutomatica();
-      console.log("[Job] Transferência automática de leads inicializada (a cada 30 segundos)");
+      console.log("[Job] Transferência automática de leads inicializada (a cada 6 horas — regra: 5 dias sem follow-up)");
     }).catch(err => {
       console.error("[Job] Erro ao inicializar job de transferência automática:", err);
     });
@@ -160,7 +160,7 @@ async function startServer() {
     // Inicializar job de sincronização de todas as métricas
     import("../metricasSyncJob").then(({ startMetricasSyncJob }) => {
       startMetricasSyncJob();
-      console.log("[Job] Sincronização automática de métricas inicializada (a cada 5 minutos)");
+      console.log("[Job] Sincronização automática de métricas inicializada (a cada 30 minutos)");
     }).catch(err => {
       console.error("[Job] Erro ao inicializar job de sincronização de métricas:", err);
     });
@@ -195,7 +195,7 @@ async function startServer() {
     // Inicializar job de recálculo de pontuação
     import("../pontuacaoJob").then(({ iniciarJobPontuacao }) => {
       iniciarJobPontuacao();
-      console.log("[Job] Recálculo automático de pontuação inicializado (a cada 5 minutos)");
+      console.log("[Job] Recálculo automático de pontuação inicializado (a cada 6 horas)");
     }).catch(err => {
       console.error("[Job] Erro ao inicializar job de pontuação:", err);
     });

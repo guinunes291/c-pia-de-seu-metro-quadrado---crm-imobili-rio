@@ -6,8 +6,8 @@ import { and, eq, lt, inArray } from "drizzle-orm";
  * Tempo máximo em "Aguardando Atendimento" com timerAtivo antes de desativar o timer: 5 minutos
  * ⚠️ REGRA ATUALIZADA: o timer NÃO redistribui mais o lead.
  * Leads em aguardando_atendimento ficam com o corretor atual.
- * A transferência só ocorre por ação manual ou após 48h sem interação
- * (via transferenciaAutomaticaJob que roda à meia-noite).
+ * A transferência automática só ocorre após 5 dias sem follow-up
+ * (via transferenciaJob que roda a cada 6h).
  */
 const TIMER_MINUTOS = 5;
 

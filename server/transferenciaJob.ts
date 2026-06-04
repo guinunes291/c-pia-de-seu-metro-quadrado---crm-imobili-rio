@@ -235,17 +235,20 @@ async function transferirLead(
   await db.insert(distributionLog).values({
     leadId: lead.id,
     corretorId: novoCorretorId,
+    tipo: "automatica",
     motivo: "5_dias_sem_followup",
-    timestamp: new Date(),
-  }).catch(() => {});
+  }).catch(e => console.error("[Transferência Job] Erro ao gravar distribution_log:", e));
 
   await db.insert(logTransferencias).values({
     leadId: lead.id,
-    corretorAntigoId: lead.corretorId,
-    corretorNovoId: novoCorretorId,
+    leadNome: lead.nome ?? "",
+    corretorOrigemId: lead.corretorId ?? null,
+    corretorOrigemNome: null,
+    corretorDestinoId: novoCorretorId,
+    corretorDestinoNome: novoCorretorNome,
     motivo: "5_dias_sem_followup",
-    timestamp: new Date(),
-  }).catch(() => {});
+    statusFinal: "transferido",
+  }).catch(e => console.error("[Transferência Job] Erro ao gravar log_transferencias:", e));
 
   console.log(
     `[Transferência Job] Lead ${lead.id} (${lead.nome}) transferido de ${lead.corretorId} → ${novoCorretorId} (${novoCorretorNome})`

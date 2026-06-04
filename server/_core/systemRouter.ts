@@ -500,11 +500,11 @@ export const systemRouter = router({
             // Registrar no log de transferências
             await tx.insert(logTransferencias).values({
               leadId: lead.id,
+              leadNome: lead.nome ?? "",
               corretorOrigemId: lead.corretorId,
               corretorDestinoId: corretorSelecionado.id,
-              motivo: "2 dias sem interação",
+              motivo: "2_dias_sem_interacao",
               statusFinal: "transferido",
-              dataTransferencia: new Date(),
             });
             
             // Decrementar cota
