@@ -66,6 +66,7 @@ export const copaRouter = router({
     const mapFase = (row: Record<string, unknown>) => ({
       id: Number(row.id),
       nome: String(row.nome ?? ""),
+      tipo: String(row.tipo ?? ""),
       ordem: Number(row.ordem ?? 0),
       semanaInicio: row.semanaInicio ? String(row.semanaInicio) : null,
       semanaFim: row.semanaFim ? String(row.semanaFim) : null,
@@ -365,6 +366,14 @@ export const copaRouter = router({
       for (let i = 0; i < participantes.length; i++) {
         const selecaoId = selecoes[i % selecoes.length];
         await db.execute(sql`UPDATE copa_corretores SET selecaoId = ${selecaoId} WHERE corretorId = ${participantes[i]}`);
+      }
+
+      // Dividir aleatoriamente em grupo A (primeira metade) e grupo B (segunda metade)
+      const shuffled = [...participantes].sort(() => Math.random() - 0.5);
+      const half = Math.ceil(shuffled.length / 2);
+      for (let i = 0; i < shuffled.length; i++) {
+        const grupo = i < half ? "A" : "B";
+        await db.execute(sql`UPDATE copa_corretores SET grupo = ${grupo} WHERE corretorId = ${shuffled[i]}`);
       }
 
       // Recriar confrontos da fase de grupos
@@ -677,6 +686,9 @@ export const copaRouter = router({
     for (const f of novasFases) {
       await db.execute(sql`INSERT INTO copa_fases (nome, tipo, ordem, semanaInicio, semanaFim) VALUES (${f.nome}, ${f.tipo}, ${f.ordem}, ${f.si}, ${f.sf})`);
     }
+
+    // Garantir que a coluna `grupo` existe em copa_corretores (idempotente)
+    await db.execute(sql`ALTER TABLE copa_corretores ADD COLUMN IF NOT EXISTS grupo VARCHAR(5)`);
 
     const selCount = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_selecoes`));
     if (Number(selCount[0]?.c) === 0) {

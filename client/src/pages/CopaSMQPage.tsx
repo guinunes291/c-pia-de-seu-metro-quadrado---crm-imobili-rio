@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Selecao { id: number; nome: string; bandeira: string; }
-interface Fase { id: number; nome: string; ordem: number; semanaInicio: string | null; semanaFim: string | null; }
+interface Fase { id: number; nome: string; tipo: string; ordem: number; semanaInicio: string | null; semanaFim: string | null; }
 interface Confronto { id: number; faseId: number; corretorAId: number | null; corretorBId: number | null; vencedorId: number | null; semanaRef: number | null; }
 interface CorretorCopa { corretorId: number; nome: string; selecaoId: number | null; selecaoNome: string | null; selecaoBandeira: string | null; grupo?: string | null; }
 interface CorretorDisponivel { id: number; nome: string; role: string; naCopa: boolean; }
@@ -142,15 +142,15 @@ export default function CopaSMQPage() {
   }, [corretoresCopa]);
   const gruposOrdenados = useMemo(() => Object.keys(grupos).filter(g => g !== "?").sort(), [grupos]);
 
-  // Fases específicas (lookup por tipo para garantir compatibilidade com o banco)
-  const faseGrupos    = fases.find(f => f.ordem === 1);
-  const faseRep1      = fases.find(f => f.nome?.toLowerCase().includes("repescagem 1") || f.nome?.toLowerCase().includes("repescagem1"));
-  const faseOitavas   = fases.find(f => f.nome?.toLowerCase().includes("oitava"));
-  const faseRep2      = fases.find(f => f.nome?.toLowerCase().includes("repescagem 2") || f.nome?.toLowerCase().includes("repescagem2"));
-  const faseQuartas   = fases.find(f => f.nome?.toLowerCase().includes("quarta"));
-  const faseSemi      = fases.find(f => f.nome?.toLowerCase().includes("semi"));
-  const faseTerceiro  = fases.find(f => f.nome?.toLowerCase().includes("3") && f.nome?.toLowerCase().includes("lugar"));
-  const faseFinal     = fases.find(f => f.nome?.toLowerCase().includes("grande final"));
+  // Fases específicas — lookup por `tipo` (campo retornado pelo backend, definido em inicializarDados)
+  const faseGrupos    = fases.find(f => f.tipo === "grupos");
+  const faseRep1      = fases.find(f => f.tipo === "repescagem1");
+  const faseOitavas   = fases.find(f => f.tipo === "oitavas");
+  const faseRep2      = fases.find(f => f.tipo === "repescagem2");
+  const faseQuartas   = fases.find(f => f.tipo === "quartas");
+  const faseSemi      = fases.find(f => f.tipo === "semifinal");
+  const faseTerceiro  = fases.find(f => f.tipo === "terceiro");
+  const faseFinal     = fases.find(f => f.tipo === "final");
 
   // Pontos por semana para cada confronto (placar correto)
   // Coletar IDs únicos de corretores e semanas de TODOS os confrontos (todas as fases)
@@ -720,11 +720,28 @@ export default function CopaSMQPage() {
               </div>
             )}
 
-            {corretoresCopa.length === 0 && fases.length === 0 && (
+            {fases.length === 0 && (
               <div style={{ textAlign: "center", padding: "60px 20px", color: "rgba(255,255,255,0.4)" }}>
                 <div style={{ fontSize: 48, marginBottom: 12 }}>⚽</div>
-                <div style={{ fontSize: 16, marginBottom: 8 }}>Chaveamento ainda não configurado.</div>
-                {isAdmin && <div style={{ fontSize: 13 }}>Acesse a aba Admin para inicializar a Copa.</div>}
+                <div style={{ fontSize: 16, marginBottom: 8 }}>Copa ainda não inicializada.</div>
+                {isAdmin && <div style={{ fontSize: 13 }}>Acesse a aba Admin → clique em "Inicializar Copa SMQ".</div>}
+              </div>
+            )}
+            {fases.length > 0 && confrontos.length === 0 && (
+              <div style={{ textAlign: "center", padding: "60px 20px", color: "rgba(255,255,255,0.4)" }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>🎲</div>
+                <div style={{ fontSize: 16, marginBottom: 8 }}>Chaveamento ainda não gerado.</div>
+                {isAdmin && corretoresCopa.length === 0 && (
+                  <div style={{ fontSize: 13 }}>
+                    Passo 1: Acesse o Admin → "Gerenciar Participantes" → salve os corretores.<br />
+                    Passo 2: Admin → "Realizar Sorteio".
+                  </div>
+                )}
+                {isAdmin && corretoresCopa.length > 0 && (
+                  <div style={{ fontSize: 13 }}>
+                    {corretoresCopa.length} participante{corretoresCopa.length !== 1 ? "s" : ""} configurado{corretoresCopa.length !== 1 ? "s" : ""}. Acesse o Admin → "Realizar Sorteio".
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1058,7 +1075,7 @@ export default function CopaSMQPage() {
                 {corretoresCopa.length > 0 && <span style={{ color: "#e53e3e" }}> Atenção: irá substituir o sorteio atual!</span>}
               </p>
               <button
-                onClick={() => { if (confirm("Confirmar sorteio? Isso substituirá o sorteio atual.")) realizarSorteioMut.mutate(); }}
+                onClick={() => { if (confirm("Confirmar sorteio? Isso substituirá o sorteio atual.")) realizarSorteioMut.mutate({ confirmar: true }); }}
                 style={btnStyle("#9f7aea")}
                 disabled={realizarSorteioMut.isPending}
               >
