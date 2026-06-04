@@ -394,17 +394,24 @@ export const copaRouter = router({
         const n = membros.length;
         if (n < 2) continue;
 
-        // Algoritmo de round-robin com rotação circular
-        // Fixa o primeiro elemento, rotaciona os demais
+        // Algoritmo de round-robin com dummy player para N ímpar
+        // Se N é ímpar, adiciona um "fantasma" (-1) para tornar par
+        // Quem enfrentar o fantasma tem bye naquela rodada
         const arr = [...membros];
-        const numRodadas = n % 2 === 0 ? n - 1 : n;
-        const numJogosPorRodada = Math.floor(n / 2);
+        if (n % 2 !== 0) arr.push(-1); // dummy
+        const m = arr.length; // agora sempre par
+        const numRodadas = m - 1; // N-1 rodadas para N par
+        const numJogosPorRodada = m / 2;
 
         for (let rodada = 0; rodada < numRodadas; rodada++) {
-          const semana = rodada + 1; // semanas 1 a 7
+          const semana = rodada + 1; // semanas 1 a 7 (para 7 corretores: 7 rodadas com dummy = 6 rodadas efetivas... não!)
+          // Com dummy: 8 slots, 7 rodadas, 4 jogos/rodada, mas 1 jogo por rodada é contra o dummy (bye)
+          // Então efetivamente: 7 rodadas × 3 jogos reais = 21 confrontos = C(7,2) ✓
           for (let j = 0; j < numJogosPorRodada; j++) {
             const a = arr[j];
-            const b = arr[n - 1 - j];
+            const b = arr[m - 1 - j];
+            // Pular se algum é o dummy (-1)
+            if (a === -1 || b === -1) continue;
             if (a !== undefined && b !== undefined && a !== b) {
               await db.execute(sql`
                 INSERT INTO copa_confrontos (faseId, corretorAId, corretorBId, semanaRef, posicao)
@@ -414,9 +421,9 @@ export const copaRouter = router({
               totalConfrontos++;
             }
           }
-          // Rotacionar: manter arr[0] fixo, rotacionar arr[1..n-1]
-          const last = arr[n - 1];
-          for (let k = n - 1; k > 1; k--) arr[k] = arr[k - 1];
+          // Rotacionar: manter arr[0] fixo, rotacionar arr[1..m-1]
+          const last = arr[m - 1];
+          for (let k = m - 1; k > 1; k--) arr[k] = arr[k - 1];
           arr[1] = last!;
         }
       }
