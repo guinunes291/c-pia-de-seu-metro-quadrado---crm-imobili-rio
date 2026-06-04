@@ -10,19 +10,22 @@ interface Confronto { id: number; faseId: number; corretorAId: number | null; co
 interface CorretorCopa { corretorId: number; nome: string; selecaoId: number | null; selecaoNome: string | null; selecaoBandeira: string | null; grupo?: string | null; }
 interface CorretorDisponivel { id: number; nome: string; role: string; naCopa: boolean; }
 interface ConfigPonto { id: number; chave: string; label: string; pontos: number; }
-interface ConfigPremio { id: number; posicao: number; descricao: string; valor: string; icone: string; ordem: number; }
+interface ConfigPremio { id: number; posicao: string; descricao: string; valor: string; icone: string; ordem: number; }
 interface RankingItem { posicao: number; corretorId: number; nome: string; selecao: Selecao | null; totalAgendamentos: number; totalVisitas: number; totalDocumentacao: number; totalVendas: number; totalPontos: number; }
 
 // ─── Calendário ──────────────────────────────────────────────────────────────
 const SEMANAS = [
   { semana: 1, periodo: "03/06–09/06", label: "FASE DE GRUPOS" },
   { semana: 2, periodo: "10/06–16/06", label: "FASE DE GRUPOS" },
-  { semana: 3, periodo: "17/06–23/06", label: "REPESCAGEM + QUARTAS" },
-  { semana: 4, periodo: "24/06–30/06", label: "QUARTAS DE FINAL" },
-  { semana: 5, periodo: "01/07–07/07", label: "SEMIFINAL" },
-  { semana: 6, periodo: "08/07–14/07", label: "SEMIFINAL" },
-  { semana: 7, periodo: "15/07–21/07", label: "FINAL & 3º LUGAR" },
-  { semana: 8, periodo: "22/07–28/07", label: "FINAL & 3º LUGAR" },
+  { semana: 3, periodo: "17/06–23/06", label: "FASE DE GRUPOS" },
+  { semana: 4, periodo: "24/06–30/06", label: "FASE DE GRUPOS" },
+  { semana: 5, periodo: "01/07–07/07", label: "FASE DE GRUPOS" },
+  { semana: 6, periodo: "08/07–14/07", label: "FASE DE GRUPOS" },
+  { semana: 7, periodo: "15/07–21/07", label: "FASE DE GRUPOS" },
+  { semana: 8, periodo: "22/07–28/07", label: "REPESCAGEM" },
+  { semana: 9, periodo: "29/07–04/08", label: "QUARTAS DE FINAL" },
+  { semana: 10, periodo: "05/08–11/08", label: "SEMIFINAL" },
+  { semana: 11, periodo: "12/08–18/08", label: "FINAL & 3º LUGAR" },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -145,25 +148,23 @@ export default function CopaSMQPage() {
   const faseFinal = fases.find(f => f.nome?.toLowerCase().includes("final") && !f.nome?.toLowerCase().includes("semi") && !f.nome?.toLowerCase().includes("3"));
 
   // Pontos por semana para cada confronto (placar correto)
-  // Coletar IDs únicos de corretores e semanas dos confrontos visíveis
+  // Coletar IDs únicos de corretores e semanas de TODOS os confrontos (todas as fases)
   const confrontosSemanas = useMemo(() => {
     const semanas = new Set<number>();
-    const fgId = faseGrupos?.id ?? 1;
-    confrontos.filter(c => c.faseId === fgId).forEach(c => {
+    confrontos.forEach(c => {
       if (c.semanaRef) semanas.add(Number(c.semanaRef));
     });
     return Array.from(semanas);
-  }, [confrontos, faseGrupos]);
+  }, [confrontos]);
 
   const confrontoCorretorIds = useMemo(() => {
-    const fgId = faseGrupos?.id ?? 1;
     const ids = new Set<number>();
-    confrontos.filter(c => c.faseId === fgId).forEach(c => {
+    confrontos.forEach(c => {
       if (c.corretorAId) ids.add(Number(c.corretorAId));
       if (c.corretorBId) ids.add(Number(c.corretorBId));
     });
     return Array.from(ids);
-  }, [confrontos, faseGrupos]);
+  }, [confrontos]);
 
   // Queries de pontos por semana (uma query por semana)
   const pontosSem1 = trpc.copa.getPontosConfronto.useQuery(
@@ -198,6 +199,18 @@ export default function CopaSMQPage() {
     { corretorIds: confrontoCorretorIds, semanaRef: 8 },
     { enabled: confrontosSemanas.includes(8) && confrontoCorretorIds.length > 0 }
   );
+  const pontosSem9 = trpc.copa.getPontosConfronto.useQuery(
+    { corretorIds: confrontoCorretorIds, semanaRef: 9 },
+    { enabled: confrontosSemanas.includes(9) && confrontoCorretorIds.length > 0 }
+  );
+  const pontosSem10 = trpc.copa.getPontosConfronto.useQuery(
+    { corretorIds: confrontoCorretorIds, semanaRef: 10 },
+    { enabled: confrontosSemanas.includes(10) && confrontoCorretorIds.length > 0 }
+  );
+  const pontosSem11 = trpc.copa.getPontosConfronto.useQuery(
+    { corretorIds: confrontoCorretorIds, semanaRef: 11 },
+    { enabled: confrontosSemanas.includes(11) && confrontoCorretorIds.length > 0 }
+  );
 
   // Mapa consolidado: semana -> { corretorId -> pontos }
   const pontosPorSemana = useMemo(() => {
@@ -206,6 +219,7 @@ export default function CopaSMQPage() {
       [1, pontosSem1.data], [2, pontosSem2.data], [3, pontosSem3.data],
       [4, pontosSem4.data], [5, pontosSem5.data], [6, pontosSem6.data],
       [7, pontosSem7.data], [8, pontosSem8.data],
+      [9, pontosSem9.data], [10, pontosSem10.data], [11, pontosSem11.data],
     ] as [number, Record<string, number> | undefined][];
     for (const [sem, data] of semDatas) {
       if (data) {
@@ -217,7 +231,8 @@ export default function CopaSMQPage() {
     }
     return map;
   }, [pontosSem1.data, pontosSem2.data, pontosSem3.data, pontosSem4.data,
-      pontosSem5.data, pontosSem6.data, pontosSem7.data, pontosSem8.data]);
+      pontosSem5.data, pontosSem6.data, pontosSem7.data, pontosSem8.data,
+      pontosSem9.data, pontosSem10.data, pontosSem11.data]);
 
   // Helper: pontos de um corretor em uma semana específica
   function ptsPorSemana(corretorId: number | null, semana: number | null): number {
@@ -348,9 +363,9 @@ export default function CopaSMQPage() {
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ color: "#009c3b", fontSize: 18, fontWeight: 700, letterSpacing: 1 }}>03 JUN → 26 JUL 2026</div>
+            <div style={{ color: "#009c3b", fontSize: 18, fontWeight: 700, letterSpacing: 1 }}>03 JUN → 18 AGO 2026</div>
             <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, letterSpacing: 2, textTransform: "uppercase" }}>
-              8 SEMANAS · {corretoresCopa.length} CORRETORES · R$ 7.250 EM PRÊMIOS
+              11 SEMANAS · {corretoresCopa.length} CORRETORES · R$ 7.250 EM PRÊMIOS
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end", marginTop: 6 }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#009c3b", display: "inline-block", boxShadow: "0 0 6px #009c3b" }} />
@@ -542,12 +557,12 @@ export default function CopaSMQPage() {
               <div style={{ marginBottom: 48 }}>
                 <FaseHeader
                   nome="REPESCAGEM – SEGUNDA CHANCE"
-                  periodo={`SEMANA 3 · ${faseRepescagem.semanaInicio ?? "17/06"} A ${faseRepescagem.semanaFim ?? "23/06"}`}
+                  periodo={`SEMANA 8 · ${faseRepescagem.semanaInicio ?? "22/07"} A ${faseRepescagem.semanaFim ?? "28/07"}`}
                   cor="#e53e3e"
                 />
                 <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: 24 }}>
                   <p style={{ color: "rgba(255,255,255,0.55)", fontSize: 13, marginBottom: 16, lineHeight: 1.6 }}>
-                    Os eliminados da fase de grupos disputam duelos. Os vencedores avançam para as Quartas de Final.
+                    3º e 4º de cada grupo (4 corretores) disputam 2 duelos cruzados. Os 2 vencedores avançam para as Quartas de Final. Os 2 perdedores são eliminados.
                   </p>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                     {confrontosDaFase(faseRepescagem.id).length > 0
@@ -580,7 +595,7 @@ export default function CopaSMQPage() {
             {/* Fase Eliminatória */}
             {(faseQuartas || faseSemi || faseFinal) && (
               <div style={{ marginBottom: 48 }}>
-                <FaseHeader nome="FASE ELIMINATÓRIA" periodo="SEMANAS 3–8 · QUARTAS → SEMIFINAL → FINAL" />
+                <FaseHeader nome="FASE ELIMINATÓRIA" periodo="SEMANAS 9–11 · QUARTAS → SEMIFINAL → FINAL" />
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20 }}>
                   {/* Quartas */}
                   <div>
@@ -592,8 +607,8 @@ export default function CopaSMQPage() {
                         ? confrontosDaFase(faseQuartas.id).map(c => (
                             <ConfrontoCard key={c.id} confronto={c} nomeCorretor={nomeCorretor} selecaoCorretor={selecaoCorretor} ptsPorCorretor={ptsPorCorretor} />
                           ))
-                        : [0, 1, 2, 3].map(i => <ConfrontoPlaceholder key={i} />)
-                      : [0, 1, 2, 3].map(i => <ConfrontoPlaceholder key={i} />)
+                        : [0, 1, 2].map(i => <ConfrontoPlaceholder key={i} />)
+                      : [0, 1, 2].map(i => <ConfrontoPlaceholder key={i} />)
                     }
                   </div>
                   {/* Semifinal */}
@@ -601,13 +616,30 @@ export default function CopaSMQPage() {
                     <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", textAlign: "center", marginBottom: 12 }}>
                       🏃 SEMIFINAL
                     </div>
-                    {faseSemi
-                      ? confrontosDaFase(faseSemi.id).length > 0
-                        ? confrontosDaFase(faseSemi.id).map(c => (
-                            <ConfrontoCard key={c.id} confronto={c} nomeCorretor={nomeCorretor} selecaoCorretor={selecaoCorretor} ptsPorCorretor={ptsPorCorretor} />
-                          ))
-                        : [0, 1].map(i => <ConfrontoPlaceholder key={i} />)
-                      : [0, 1].map(i => <ConfrontoPlaceholder key={i} />)
+                    {faseSemi ? (() => {
+                      const todosSemi = confrontos.filter(c => c.faseId === faseSemi.id);
+                      const byeSemi = todosSemi.find(c => c.corretorBId === null && c.corretorAId !== null);
+                      const duelosSemi = todosSemi.filter(c => c.corretorBId !== null);
+                      return (
+                        <>
+                          {duelosSemi.length > 0
+                            ? duelosSemi.map(c => (
+                                <ConfrontoCard key={c.id} confronto={c} nomeCorretor={nomeCorretor} selecaoCorretor={selecaoCorretor} ptsPorCorretor={ptsPorCorretor} />
+                              ))
+                            : <ConfrontoPlaceholder />
+                          }
+                          {byeSemi && (
+                            <div style={{ background: "rgba(255,215,0,0.08)", border: "1px solid rgba(255,215,0,0.3)", borderRadius: 8, padding: "10px 14px", marginTop: 8, textAlign: "center" }}>
+                              <div style={{ color: "#ffdf00", fontSize: 12, fontWeight: 700, letterSpacing: 1 }}>BYE — CLASSIFICADO DIRETO</div>
+                              <div style={{ color: "#fff", fontSize: 14, fontWeight: 800, marginTop: 4 }}>{selecaoCorretor(byeSemi.corretorAId)?.bandeira ?? "🏳️"} {nomeCorretor(byeSemi.corretorAId)}</div>
+                              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, marginTop: 2 }}>Melhor classificado das Quartas — avança direto para a Final</div>
+                            </div>
+                          )}
+                          {todosSemi.length === 0 && <ConfrontoPlaceholder />}
+                        </>
+                      );
+                    })()
+                    : <ConfrontoPlaceholder />
                     }
                   </div>
                   {/* Final */}
