@@ -15,17 +15,20 @@ interface RankingItem { posicao: number; corretorId: number; nome: string; selec
 
 // ─── Calendário ──────────────────────────────────────────────────────────────
 const SEMANAS = [
-  { semana: 1, periodo: "03/06–09/06", label: "FASE DE GRUPOS" },
-  { semana: 2, periodo: "10/06–16/06", label: "FASE DE GRUPOS" },
-  { semana: 3, periodo: "17/06–23/06", label: "FASE DE GRUPOS" },
-  { semana: 4, periodo: "24/06–30/06", label: "FASE DE GRUPOS" },
-  { semana: 5, periodo: "01/07–07/07", label: "FASE DE GRUPOS" },
-  { semana: 6, periodo: "08/07–14/07", label: "FASE DE GRUPOS" },
-  { semana: 7, periodo: "15/07–21/07", label: "FASE DE GRUPOS" },
-  { semana: 8, periodo: "22/07–28/07", label: "REPESCAGEM" },
-  { semana: 9, periodo: "29/07–04/08", label: "QUARTAS DE FINAL" },
-  { semana: 10, periodo: "05/08–11/08", label: "SEMIFINAL" },
-  { semana: 11, periodo: "12/08–18/08", label: "FINAL & 3º LUGAR" },
+  { semana: 1,  periodo: "03/06–09/06", label: "FASE DE GRUPOS"   },
+  { semana: 2,  periodo: "10/06–16/06", label: "FASE DE GRUPOS"   },
+  { semana: 3,  periodo: "17/06–23/06", label: "FASE DE GRUPOS"   },
+  { semana: 4,  periodo: "24/06–30/06", label: "FASE DE GRUPOS"   },
+  { semana: 5,  periodo: "01/07–07/07", label: "FASE DE GRUPOS"   },
+  { semana: 6,  periodo: "08/07–14/07", label: "FASE DE GRUPOS"   },
+  { semana: 7,  periodo: "15/07–21/07", label: "FASE DE GRUPOS"   },
+  { semana: 8,  periodo: "22/07–28/07", label: "REPESCAGEM 1"     },
+  { semana: 9,  periodo: "29/07–04/08", label: "OITAVAS DE FINAL" },
+  { semana: 10, periodo: "05/08–11/08", label: "REPESCAGEM 2"     },
+  { semana: 11, periodo: "12/08–18/08", label: "QUARTAS DE FINAL" },
+  { semana: 12, periodo: "19/08–25/08", label: "SEMIFINAL"        },
+  { semana: 13, periodo: "26/08–01/09", label: "FINAL + 3º LUGAR" },
+  { semana: 14, periodo: "02/09–08/09", label: "PREMIAÇÃO"        },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -139,13 +142,15 @@ export default function CopaSMQPage() {
   }, [corretoresCopa]);
   const gruposOrdenados = useMemo(() => Object.keys(grupos).filter(g => g !== "?").sort(), [grupos]);
 
-  // Fases específicas
-  const faseGrupos = fases.find(f => f.ordem === 1 || f.nome?.toLowerCase().includes("grupo"));
-  const faseRepescagem = fases.find(f => f.nome?.toLowerCase().includes("repescagem"));
-  const faseQuartas = fases.find(f => f.nome?.toLowerCase().includes("quarta"));
-  const faseSemi = fases.find(f => f.nome?.toLowerCase().includes("semi"));
-  const faseTerceiro = fases.find(f => f.nome?.toLowerCase().includes("3") || f.nome?.toLowerCase().includes("terceiro"));
-  const faseFinal = fases.find(f => f.nome?.toLowerCase().includes("final") && !f.nome?.toLowerCase().includes("semi") && !f.nome?.toLowerCase().includes("3"));
+  // Fases específicas (lookup por tipo para garantir compatibilidade com o banco)
+  const faseGrupos    = fases.find(f => f.ordem === 1);
+  const faseRep1      = fases.find(f => f.nome?.toLowerCase().includes("repescagem 1") || f.nome?.toLowerCase().includes("repescagem1"));
+  const faseOitavas   = fases.find(f => f.nome?.toLowerCase().includes("oitava"));
+  const faseRep2      = fases.find(f => f.nome?.toLowerCase().includes("repescagem 2") || f.nome?.toLowerCase().includes("repescagem2"));
+  const faseQuartas   = fases.find(f => f.nome?.toLowerCase().includes("quarta"));
+  const faseSemi      = fases.find(f => f.nome?.toLowerCase().includes("semi"));
+  const faseTerceiro  = fases.find(f => f.nome?.toLowerCase().includes("3") && f.nome?.toLowerCase().includes("lugar"));
+  const faseFinal     = fases.find(f => f.nome?.toLowerCase().includes("grande final"));
 
   // Pontos por semana para cada confronto (placar correto)
   // Coletar IDs únicos de corretores e semanas de TODOS os confrontos (todas as fases)
@@ -211,6 +216,18 @@ export default function CopaSMQPage() {
     { corretorIds: confrontoCorretorIds, semanaRef: 11 },
     { enabled: confrontosSemanas.includes(11) && confrontoCorretorIds.length > 0 }
   );
+  const pontosSem12 = trpc.copa.getPontosConfronto.useQuery(
+    { corretorIds: confrontoCorretorIds, semanaRef: 12 },
+    { enabled: confrontosSemanas.includes(12) && confrontoCorretorIds.length > 0 }
+  );
+  const pontosSem13 = trpc.copa.getPontosConfronto.useQuery(
+    { corretorIds: confrontoCorretorIds, semanaRef: 13 },
+    { enabled: confrontosSemanas.includes(13) && confrontoCorretorIds.length > 0 }
+  );
+  const pontosSem14 = trpc.copa.getPontosConfronto.useQuery(
+    { corretorIds: confrontoCorretorIds, semanaRef: 14 },
+    { enabled: confrontosSemanas.includes(14) && confrontoCorretorIds.length > 0 }
+  );
 
   // Mapa consolidado: semana -> { corretorId -> pontos }
   const pontosPorSemana = useMemo(() => {
@@ -220,6 +237,7 @@ export default function CopaSMQPage() {
       [4, pontosSem4.data], [5, pontosSem5.data], [6, pontosSem6.data],
       [7, pontosSem7.data], [8, pontosSem8.data],
       [9, pontosSem9.data], [10, pontosSem10.data], [11, pontosSem11.data],
+      [12, pontosSem12.data], [13, pontosSem13.data], [14, pontosSem14.data],
     ] as [number, Record<string, number> | undefined][];
     for (const [sem, data] of semDatas) {
       if (data) {
@@ -232,7 +250,8 @@ export default function CopaSMQPage() {
     return map;
   }, [pontosSem1.data, pontosSem2.data, pontosSem3.data, pontosSem4.data,
       pontosSem5.data, pontosSem6.data, pontosSem7.data, pontosSem8.data,
-      pontosSem9.data, pontosSem10.data, pontosSem11.data]);
+      pontosSem9.data, pontosSem10.data, pontosSem11.data,
+      pontosSem12.data, pontosSem13.data, pontosSem14.data]);
 
   // Helper: pontos de um corretor em uma semana específica
   function ptsPorSemana(corretorId: number | null, semana: number | null): number {
@@ -363,9 +382,9 @@ export default function CopaSMQPage() {
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ color: "#009c3b", fontSize: 18, fontWeight: 700, letterSpacing: 1 }}>03 JUN → 18 AGO 2026</div>
+            <div style={{ color: "#009c3b", fontSize: 18, fontWeight: 700, letterSpacing: 1 }}>03 JUN → 08 SET 2026</div>
             <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, letterSpacing: 2, textTransform: "uppercase" }}>
-              11 SEMANAS · {corretoresCopa.length} CORRETORES · R$ 7.250 EM PRÊMIOS
+              14 SEMANAS · {corretoresCopa.length} CORRETORES · R$ 7.250 EM PRÊMIOS
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end", marginTop: 6 }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#009c3b", display: "inline-block", boxShadow: "0 0 6px #009c3b" }} />
@@ -450,12 +469,13 @@ export default function CopaSMQPage() {
               <div style={{ marginBottom: 48 }}>
                 <FaseHeader
                   nome="FASE DE GRUPOS"
-                  periodo={`SEMANAS 1–2 · ${faseGrupos.semanaInicio ?? "03/06"} A ${faseGrupos.semanaFim ?? "16/06"}`}
+                  periodo={`SEMANAS 1–7 · ${faseGrupos.semanaInicio ?? "03/06"} A ${faseGrupos.semanaFim ?? "21/07"}`}
                 />
                 <p style={{ color: "rgba(255,255,255,0.55)", fontSize: 13, marginBottom: 20, lineHeight: 1.6 }}>
-                  {corretoresCopa.length} corretores em {gruposOrdenados.length} grupos. O 1º de cada grupo avança direto para as Quartas.
-                  O melhor 2º colocado (wild card) também avança. Os demais entram na{" "}
-                  <span style={{ color: "#e53e3e", fontWeight: 700 }}>Repescagem</span>.
+                  {corretoresCopa.length} corretores em {gruposOrdenados.length} grupos de 7. Round-robin completo — 6 rodadas por corretor.
+                  <strong style={{ color: "#ffdf00" }}> 1º–4º</strong> de cada grupo avançam direto para as Oitavas.
+                  <strong style={{ color: "#e53e3e" }}> 5º–7º</strong> disputam a Repescagem 1.
+                  Bônus de posição ao final dos grupos: 1º=+10 pts, 2º=+9 pts ... 7º=+4 pts.
                 </p>
                 <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(gruposOrdenados.length, 4)}, 1fr)`, gap: 16 }}>
                   {gruposOrdenados.map(grupo => (
@@ -552,50 +572,76 @@ export default function CopaSMQPage() {
               </div>
             )}
 
-            {/* Repescagem */}
-            {faseRepescagem && (
+            {/* Repescagem 1 */}
+            {faseRep1 && (
               <div style={{ marginBottom: 48 }}>
                 <FaseHeader
-                  nome="REPESCAGEM – SEGUNDA CHANCE"
-                  periodo={`SEMANA 8 · ${faseRepescagem.semanaInicio ?? "22/07"} A ${faseRepescagem.semanaFim ?? "28/07"}`}
+                  nome="REPESCAGEM 1"
+                  periodo={`SEMANA 8 · ${faseRep1.semanaInicio ?? "22/07"} A ${faseRep1.semanaFim ?? "28/07"}`}
                   cor="#e53e3e"
                 />
-                <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: 24 }}>
-                  <p style={{ color: "rgba(255,255,255,0.55)", fontSize: 13, marginBottom: 16, lineHeight: 1.6 }}>
-                    3º e 4º de cada grupo (4 corretores) disputam 2 duelos cruzados. Os 2 vencedores avançam para as Quartas de Final. Os 2 perdedores são eliminados.
-                  </p>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                    {confrontosDaFase(faseRepescagem.id).length > 0
-                      ? confrontosDaFase(faseRepescagem.id).map(c => {
-                          const selA = selecaoCorretor(c.corretorAId);
-                          const selB = selecaoCorretor(c.corretorBId);
-                          return (
-                            <div key={c.id} style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-                              <span style={{ fontSize: 20 }}>{selA?.bandeira ?? "🏳️"}</span>
-                              <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 12 }}>VS</span>
-                              <span style={{ fontSize: 20 }}>{selB?.bandeira ?? "🏳️"}</span>
-                              <div style={{ marginLeft: 4 }}>
-                                <div style={{ color: "#fff", fontSize: 12, fontWeight: 700 }}>{selA?.nome ?? "A definir"} vs {selB?.nome ?? "A definir"}</div>
-                                <div style={{ color: "#e53e3e", fontSize: 11 }}>{nomeCorretor(c.corretorAId)} vs {nomeCorretor(c.corretorBId)}</div>
-                              </div>
-                            </div>
-                          );
-                        })
-                      : (
-                        <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
-                          Aguardando resultado da fase de grupos para definir os participantes da repescagem.
-                        </div>
-                      )
-                    }
-                  </div>
+                <p style={{ color: "rgba(255,255,255,0.55)", fontSize: 13, marginBottom: 16, lineHeight: 1.6 }}>
+                  5º, 6º e 7º de cada grupo (6 corretores) em 3 duelos cruzados. Os <strong style={{ color: "#ffdf00" }}>2 melhores vencedores</strong> (por pontuação geral) avançam para as Oitavas. O 3º vencedor e os 3 perdedores são <strong style={{ color: "#e53e3e" }}>eliminados</strong>.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {confrontosDaFase(faseRep1.id).length > 0
+                    ? confrontosDaFase(faseRep1.id).map(c => (
+                        <ConfrontoCard key={c.id} confronto={c} nomeCorretor={nomeCorretor} selecaoCorretor={selecaoCorretor} ptsPorCorretor={ptsPorCorretor} />
+                      ))
+                    : <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, padding: "20px 0" }}>Aguardando resultado da fase de grupos.</div>
+                  }
                 </div>
               </div>
             )}
 
-            {/* Fase Eliminatória */}
+            {/* Oitavas de Final */}
+            {faseOitavas && (
+              <div style={{ marginBottom: 48 }}>
+                <FaseHeader
+                  nome="OITAVAS DE FINAL"
+                  periodo={`SEMANA 9 · ${faseOitavas.semanaInicio ?? "29/07"} A ${faseOitavas.semanaFim ?? "04/08"}`}
+                  cor="#f6ad55"
+                />
+                <p style={{ color: "rgba(255,255,255,0.55)", fontSize: 13, marginBottom: 16, lineHeight: 1.6 }}>
+                  1º–4º de cada grupo (8) + 2 da Repescagem 1 = 10 corretores em 5 duelos cruzados. <strong style={{ color: "#009c3b" }}>Vencedores avançam para Quartas</strong>. Perdedores vão para a Repescagem 2.
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  {confrontosDaFase(faseOitavas.id).length > 0
+                    ? confrontosDaFase(faseOitavas.id).map(c => (
+                        <ConfrontoCard key={c.id} confronto={c} nomeCorretor={nomeCorretor} selecaoCorretor={selecaoCorretor} ptsPorCorretor={ptsPorCorretor} />
+                      ))
+                    : [0, 1, 2, 3, 4].map(i => <ConfrontoPlaceholder key={i} />)
+                  }
+                </div>
+              </div>
+            )}
+
+            {/* Repescagem 2 */}
+            {faseRep2 && (
+              <div style={{ marginBottom: 48 }}>
+                <FaseHeader
+                  nome="REPESCAGEM 2"
+                  periodo={`SEMANA 10 · ${faseRep2.semanaInicio ?? "05/08"} A ${faseRep2.semanaFim ?? "11/08"}`}
+                  cor="#e53e3e"
+                />
+                <p style={{ color: "rgba(255,255,255,0.55)", fontSize: 13, marginBottom: 16, lineHeight: 1.6 }}>
+                  5 perdedores das Oitavas. O <strong style={{ color: "#e53e3e" }}>pior classificado é eliminado diretamente</strong>. Os 4 restantes disputam 2 duelos. Os <strong style={{ color: "#009c3b" }}>2 vencedores retornam para as Quartas</strong>.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {confrontosDaFase(faseRep2.id).length > 0
+                    ? confrontosDaFase(faseRep2.id).map(c => (
+                        <ConfrontoCard key={c.id} confronto={c} nomeCorretor={nomeCorretor} selecaoCorretor={selecaoCorretor} ptsPorCorretor={ptsPorCorretor} />
+                      ))
+                    : <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, padding: "20px 0" }}>Aguardando resultado das Oitavas.</div>
+                  }
+                </div>
+              </div>
+            )}
+
+            {/* Fase Eliminatória Final */}
             {(faseQuartas || faseSemi || faseFinal) && (
               <div style={{ marginBottom: 48 }}>
-                <FaseHeader nome="FASE ELIMINATÓRIA" periodo="SEMANAS 9–11 · QUARTAS → SEMIFINAL → FINAL" />
+                <FaseHeader nome="FASE ELIMINATÓRIA FINAL" periodo="SEMANAS 11–13 · QUARTAS → SEMIFINAL → FINAL" />
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20 }}>
                   {/* Quartas */}
                   <div>
@@ -603,11 +649,29 @@ export default function CopaSMQPage() {
                       ⚔️ QUARTAS DE FINAL
                     </div>
                     {faseQuartas
-                      ? confrontosDaFase(faseQuartas.id).length > 0
-                        ? confrontosDaFase(faseQuartas.id).map(c => (
-                            <ConfrontoCard key={c.id} confronto={c} nomeCorretor={nomeCorretor} selecaoCorretor={selecaoCorretor} ptsPorCorretor={ptsPorCorretor} />
-                          ))
-                        : [0, 1, 2].map(i => <ConfrontoPlaceholder key={i} />)
+                      ? (() => {
+                          const todosQ = confrontos.filter(c => c.faseId === faseQuartas.id);
+                          const byeQ = todosQ.find(c => c.corretorBId === null && c.corretorAId !== null);
+                          const duelosQ = todosQ.filter(c => c.corretorBId !== null);
+                          return (
+                            <>
+                              {duelosQ.length > 0
+                                ? duelosQ.map(c => (
+                                    <ConfrontoCard key={c.id} confronto={c} nomeCorretor={nomeCorretor} selecaoCorretor={selecaoCorretor} ptsPorCorretor={ptsPorCorretor} />
+                                  ))
+                                : [0, 1, 2].map(i => <ConfrontoPlaceholder key={i} />)
+                              }
+                              {byeQ && (
+                                <div style={{ background: "rgba(255,215,0,0.08)", border: "1px solid rgba(255,215,0,0.3)", borderRadius: 8, padding: "10px 14px", marginTop: 8, textAlign: "center" }}>
+                                  <div style={{ color: "#ffdf00", fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>BYE — CLASSIFICADO DIRETO</div>
+                                  <div style={{ color: "#fff", fontSize: 13, fontWeight: 800, marginTop: 4 }}>{selecaoCorretor(byeQ.corretorAId)?.bandeira ?? "🏳️"} {nomeCorretor(byeQ.corretorAId)}</div>
+                                  <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, marginTop: 2 }}>Melhor classificado — avança direto para Semifinal</div>
+                                </div>
+                              )}
+                              {todosQ.length === 0 && [0, 1, 2].map(i => <ConfrontoPlaceholder key={i} />)}
+                            </>
+                          );
+                        })()
                       : [0, 1, 2].map(i => <ConfrontoPlaceholder key={i} />)
                     }
                   </div>
@@ -616,30 +680,13 @@ export default function CopaSMQPage() {
                     <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", textAlign: "center", marginBottom: 12 }}>
                       🏃 SEMIFINAL
                     </div>
-                    {faseSemi ? (() => {
-                      const todosSemi = confrontos.filter(c => c.faseId === faseSemi.id);
-                      const byeSemi = todosSemi.find(c => c.corretorBId === null && c.corretorAId !== null);
-                      const duelosSemi = todosSemi.filter(c => c.corretorBId !== null);
-                      return (
-                        <>
-                          {duelosSemi.length > 0
-                            ? duelosSemi.map(c => (
-                                <ConfrontoCard key={c.id} confronto={c} nomeCorretor={nomeCorretor} selecaoCorretor={selecaoCorretor} ptsPorCorretor={ptsPorCorretor} />
-                              ))
-                            : <ConfrontoPlaceholder />
-                          }
-                          {byeSemi && (
-                            <div style={{ background: "rgba(255,215,0,0.08)", border: "1px solid rgba(255,215,0,0.3)", borderRadius: 8, padding: "10px 14px", marginTop: 8, textAlign: "center" }}>
-                              <div style={{ color: "#ffdf00", fontSize: 12, fontWeight: 700, letterSpacing: 1 }}>BYE — CLASSIFICADO DIRETO</div>
-                              <div style={{ color: "#fff", fontSize: 14, fontWeight: 800, marginTop: 4 }}>{selecaoCorretor(byeSemi.corretorAId)?.bandeira ?? "🏳️"} {nomeCorretor(byeSemi.corretorAId)}</div>
-                              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, marginTop: 2 }}>Melhor classificado das Quartas — avança direto para a Final</div>
-                            </div>
-                          )}
-                          {todosSemi.length === 0 && <ConfrontoPlaceholder />}
-                        </>
-                      );
-                    })()
-                    : <ConfrontoPlaceholder />
+                    {faseSemi
+                      ? confrontosDaFase(faseSemi.id).length > 0
+                        ? confrontosDaFase(faseSemi.id).map(c => (
+                            <ConfrontoCard key={c.id} confronto={c} nomeCorretor={nomeCorretor} selecaoCorretor={selecaoCorretor} ptsPorCorretor={ptsPorCorretor} />
+                          ))
+                        : [0, 1].map(i => <ConfrontoPlaceholder key={i} />)
+                      : [0, 1].map(i => <ConfrontoPlaceholder key={i} />)
                     }
                   </div>
                   {/* Final */}

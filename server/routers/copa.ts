@@ -94,7 +94,7 @@ export const copaRouter = router({
     const agora = new Date();
     const diffMs = agora.getTime() - inicio.getTime();
     const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const semana = Math.min(Math.max(Math.floor(diffDias / 7) + 1, 1), 11);
+    const semana = Math.min(Math.max(Math.floor(diffDias / 7) + 1, 1), 14);
     return { semana };
   }),
 
@@ -214,7 +214,7 @@ export const copaRouter = router({
   salvarPontuacao: protectedProcedure
     .input(z.object({
       corretorId: z.number(),
-      semana: z.number().min(1).max(11),
+      semana: z.number().min(1).max(14),
       agendamentos: z.number().min(0),
       visitas: z.number().min(0),
       documentacao: z.number().min(0),
@@ -442,13 +442,19 @@ export const copaRouter = router({
       }
       const db = await getDb();
 
-      // Buscar confronto atual para saber o vencedor anterior e semanaRef
+      // Buscar confronto atual + tipo da fase para calcular bônus correto
       const confrontoRows = getRows(await db.execute(sql`
-        SELECT vencedorId, semanaRef FROM copa_confrontos WHERE id = ${input.confrontoId}
+        SELECT cc.vencedorId, cc.semanaRef, cc.corretorBId, cf.tipo as faseTipo
+        FROM copa_confrontos cc
+        JOIN copa_fases cf ON cc.faseId = cf.id
+        WHERE cc.id = ${input.confrontoId}
       `));
       const confrontoAtual = confrontoRows[0];
       const vencedorAnterior = confrontoAtual?.vencedorId ? Number(confrontoAtual.vencedorId) : null;
       const semanaRef = confrontoAtual?.semanaRef ? Number(confrontoAtual.semanaRef) : 1;
+      const faseTipo = String(confrontoAtual?.faseTipo ?? "grupos");
+      // Byes/WO têm corretorBId nulo — não recebem bônus de fase extra
+      const isRealDuelo = confrontoAtual?.corretorBId != null;
 
       // Atualizar o vencedor do confronto
       await db.execute(sql`
@@ -456,34 +462,38 @@ export const copaRouter = router({
       `);
 
       const BONUS_VENCEDOR = 20;
+      const BONUS_FASE: Record<string, number> = {
+        repescagem1: 2, oitavas: 3, repescagem2: 2, quartas: 4, semifinal: 5,
+      };
+      const bonusFase = isRealDuelo ? (BONUS_FASE[faseTipo] ?? 0) : 0;
+      const bonusTotal = BONUS_VENCEDOR + bonusFase;
 
       // Remover bônus do vencedor anterior (se estava definido e mudou)
       if (vencedorAnterior && vencedorAnterior !== input.vencedorId) {
         await db.execute(sql`
           UPDATE copa_pontuacoes
-          SET total = GREATEST(0, total - ${BONUS_VENCEDOR}),
+          SET total = GREATEST(0, total - ${bonusTotal}),
               updatedAt = NOW()
           WHERE corretorId = ${vencedorAnterior} AND semana = ${semanaRef}
         `);
       }
 
-      // Adicionar +20 pontos ao novo vencedor (se definido)
+      // Adicionar bônus ao novo vencedor (se definido)
       if (input.vencedorId && input.vencedorId !== vencedorAnterior) {
-        // Upsert: se não existe registro para essa semana, cria; senão, incrementa
         const existeRows = getRows(await db.execute(sql`
           SELECT id FROM copa_pontuacoes WHERE corretorId = ${input.vencedorId} AND semana = ${semanaRef}
         `));
         if (existeRows.length > 0) {
           await db.execute(sql`
             UPDATE copa_pontuacoes
-            SET total = total + ${BONUS_VENCEDOR},
+            SET total = total + ${bonusTotal},
                 updatedAt = NOW()
             WHERE corretorId = ${input.vencedorId} AND semana = ${semanaRef}
           `);
         } else {
           await db.execute(sql`
             INSERT INTO copa_pontuacoes (corretorId, semana, agendamentos, visitas, documentacao, vendas, total, createdAt, updatedAt)
-            VALUES (${input.vencedorId}, ${semanaRef}, 0, 0, 0, 0, ${BONUS_VENCEDOR}, NOW(), NOW())
+            VALUES (${input.vencedorId}, ${semanaRef}, 0, 0, 0, 0, ${bonusTotal}, NOW(), NOW())
           `);
         }
       }
@@ -496,24 +506,27 @@ export const copaRouter = router({
   getPontosConfronto: protectedProcedure
     .input(z.object({
       corretorIds: z.array(z.number()),
-      semanaRef: z.number().min(1).max(11),
+      semanaRef: z.number().min(1).max(14),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
 
       // Mapa de semana → janela de datas (SP = UTC-3, então início = DD/06 03:00 UTC)
       const SEMANAS: Record<number, { inicio: string; fim: string }> = {
-        1: { inicio: "2026-06-03 03:00:00", fim: "2026-06-09 02:59:59" },
-        2: { inicio: "2026-06-10 03:00:00", fim: "2026-06-16 02:59:59" },
-        3: { inicio: "2026-06-17 03:00:00", fim: "2026-06-23 02:59:59" },
-        4: { inicio: "2026-06-24 03:00:00", fim: "2026-06-30 02:59:59" },
-        5: { inicio: "2026-07-01 03:00:00", fim: "2026-07-07 02:59:59" },
-        6: { inicio: "2026-07-08 03:00:00", fim: "2026-07-14 02:59:59" },
-        7: { inicio: "2026-07-15 03:00:00", fim: "2026-07-21 02:59:59" },
-        8: { inicio: "2026-07-22 03:00:00", fim: "2026-07-28 02:59:59" },
-        9: { inicio: "2026-07-29 03:00:00", fim: "2026-08-04 02:59:59" },
+        1:  { inicio: "2026-06-03 03:00:00", fim: "2026-06-09 02:59:59" },
+        2:  { inicio: "2026-06-10 03:00:00", fim: "2026-06-16 02:59:59" },
+        3:  { inicio: "2026-06-17 03:00:00", fim: "2026-06-23 02:59:59" },
+        4:  { inicio: "2026-06-24 03:00:00", fim: "2026-06-30 02:59:59" },
+        5:  { inicio: "2026-07-01 03:00:00", fim: "2026-07-07 02:59:59" },
+        6:  { inicio: "2026-07-08 03:00:00", fim: "2026-07-14 02:59:59" },
+        7:  { inicio: "2026-07-15 03:00:00", fim: "2026-07-21 02:59:59" },
+        8:  { inicio: "2026-07-22 03:00:00", fim: "2026-07-28 02:59:59" },
+        9:  { inicio: "2026-07-29 03:00:00", fim: "2026-08-04 02:59:59" },
         10: { inicio: "2026-08-05 03:00:00", fim: "2026-08-11 02:59:59" },
         11: { inicio: "2026-08-12 03:00:00", fim: "2026-08-18 02:59:59" },
+        12: { inicio: "2026-08-19 03:00:00", fim: "2026-08-25 02:59:59" },
+        13: { inicio: "2026-08-26 03:00:00", fim: "2026-09-01 02:59:59" },
+        14: { inicio: "2026-09-02 03:00:00", fim: "2026-09-08 02:59:59" },
       };
 
       const janela = SEMANAS[input.semanaRef];
@@ -648,19 +661,21 @@ export const copaRouter = router({
     }
     const db = await getDb();
 
-    const faseCount = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_fases`));
-    if (Number(faseCount[0]?.c) === 0) {
-      const fases = [
-        { nome: "Fase de Grupos", tipo: "grupos", ordem: 1, si: "03/06", sf: "21/06" },
-        { nome: "Quartas de Final", tipo: "quartas", ordem: 2, si: "24/06", sf: "28/06" },
-        { nome: "Repescagem", tipo: "repescagem", ordem: 3, si: "24/06", sf: "28/06" },
-        { nome: "Semifinais", tipo: "semifinal", ordem: 4, si: "01/07", sf: "05/07" },
-        { nome: "3º Lugar", tipo: "terceiro", ordem: 5, si: "08/07", sf: "12/07" },
-        { nome: "Grande Final", tipo: "final", ordem: 6, si: "08/07", sf: "12/07" },
-      ];
-      for (const f of fases) {
-        await db.execute(sql`INSERT INTO copa_fases (nome, tipo, ordem, semanaInicio, semanaFim) VALUES (${f.nome}, ${f.tipo}, ${f.ordem}, ${f.si}, ${f.sf})`);
-      }
+    // Sempre recriar fases com o novo formato (DELETE + INSERT idempotente)
+    await db.execute(sql`DELETE FROM copa_fases`);
+    const novasFases = [
+      { nome: "Fase de Grupos",   tipo: "grupos",      ordem: 1, si: "03/06", sf: "21/07" },
+      { nome: "Repescagem 1",     tipo: "repescagem1", ordem: 2, si: "22/07", sf: "28/07" },
+      { nome: "Oitavas de Final", tipo: "oitavas",     ordem: 3, si: "29/07", sf: "04/08" },
+      { nome: "Repescagem 2",     tipo: "repescagem2", ordem: 4, si: "05/08", sf: "11/08" },
+      { nome: "Quartas de Final", tipo: "quartas",     ordem: 5, si: "12/08", sf: "18/08" },
+      { nome: "Semifinal",        tipo: "semifinal",   ordem: 6, si: "19/08", sf: "25/08" },
+      { nome: "3º Lugar",         tipo: "terceiro",    ordem: 7, si: "26/08", sf: "01/09" },
+      { nome: "Grande Final",     tipo: "final",       ordem: 8, si: "26/08", sf: "01/09" },
+      { nome: "Premiação",        tipo: "premiacao",   ordem: 9, si: "02/09", sf: "08/09" },
+    ];
+    for (const f of novasFases) {
+      await db.execute(sql`INSERT INTO copa_fases (nome, tipo, ordem, semanaInicio, semanaFim) VALUES (${f.nome}, ${f.tipo}, ${f.ordem}, ${f.si}, ${f.sf})`);
     }
 
     const selCount = getRows(await db.execute(sql`SELECT COUNT(*) as c FROM copa_selecoes`));
@@ -772,7 +787,7 @@ export const copaRouter = router({
     return { podeAvancar: false, faseAtual: null, proximaFase: null };
   }),
 
-  // ── Avançar fase: cria/preenche confrontos da próxima fase com vencedores ─────────────
+  // ── Avançar fase: cria confrontos da próxima fase com base nos resultados da fase atual ────
   avancarFase: protectedProcedure.mutation(async ({ ctx }) => {
     if (!isAdminOrSuperintendente(ctx.user.role)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem avançar fases" });
@@ -782,7 +797,7 @@ export const copaRouter = router({
     const fases = getRows(await db.execute(sql`SELECT id, nome, tipo, ordem FROM copa_fases ORDER BY ordem`))
       .map(r => ({ id: Number(r.id), nome: String(r.nome), tipo: String(r.tipo), ordem: Number(r.ordem) }));
 
-    // Encontrar a fase atual (com todos confrontos completos e próxima fase sem confrontos)
+    // Encontrar a fase atual (todos confrontos completos, próxima fase vazia ou com slots null)
     let faseAtualId: number | null = null;
     let faseAtualOrdem: number | null = null;
 
@@ -821,46 +836,68 @@ export const copaRouter = router({
 
     const faseAtual = fases.find(f => f.id === faseAtualId)!;
 
-    // Buscar vencedores da fase atual
+    // Vencedores e perdedores dos duelos reais da fase atual (excluindo byes/WO)
     const vencedores = getRows(await db.execute(sql`
       SELECT vencedorId FROM copa_confrontos
-      WHERE faseId = ${faseAtualId} AND vencedorId IS NOT NULL
+      WHERE faseId = ${faseAtualId} AND vencedorId IS NOT NULL AND corretorBId IS NOT NULL
       ORDER BY id
     `)).map(r => Number(r.vencedorId));
 
-    // Buscar perdedores (para repescagem e 3º lugar)
     const perdedores = getRows(await db.execute(sql`
       SELECT CASE WHEN vencedorId = corretorAId THEN corretorBId ELSE corretorAId END as perdedorId
-      FROM copa_confrontos WHERE faseId = ${faseAtualId} AND vencedorId IS NOT NULL ORDER BY id
+      FROM copa_confrontos
+      WHERE faseId = ${faseAtualId} AND vencedorId IS NOT NULL AND corretorBId IS NOT NULL
+      ORDER BY id
     `)).map(r => Number(r.perdedorId));
 
-    // Helper: criar confronto
-    const criarConfronto = async (faseId: number, aId: number, bId: number, semana: number) => {
+    // Helper: criar confronto (bId pode ser null para bye/WO)
+    const criarConfronto = async (faseId: number, aId: number, bId: number | null, semana: number) => {
       await db.execute(sql`
         INSERT INTO copa_confrontos (faseId, corretorAId, corretorBId, semanaRef, posicao)
         VALUES (${faseId}, ${aId}, ${bId}, ${semana}, 1)
       `);
     };
 
-    // Helper: atualizar confronto existente
-    const atualizarConfronto = async (confrontoId: number, aId: number, bId: number) => {
-      await db.execute(sql`UPDATE copa_confrontos SET corretorAId = ${aId}, corretorBId = ${bId} WHERE id = ${confrontoId}`);
+    // Helper: rankear lista de corretores por pontos totais acumulados
+    const rankearPorPontos = async (ids: number[]): Promise<number[]> => {
+      if (ids.length === 0) return [];
+      const rows = getRows(await db.execute(sql`
+        SELECT corretorId, COALESCE(SUM(total), 0) as pts
+        FROM copa_pontuacoes
+        WHERE corretorId IN (${sql.join(ids.map(id => sql`${id}`), sql`, `)})
+        GROUP BY corretorId ORDER BY pts DESC
+      `));
+      const ranked = rows.map(r => Number(r.corretorId));
+      // Incluir jogadores sem pontuação registrada (ficam no fim)
+      const missing = ids.filter(id => !ranked.includes(id));
+      return [...ranked, ...missing];
     };
 
-    // === FASE DE GRUPOS (ordem 1) → QUARTAS diretos (1º e 2º de cada grupo) + REPESCAGEM (3º e 4º) ===
+    // Helper: aplicar bônus de pontuação para um corretor numa semana (upsert)
+    const aplicarBonus = async (corretorId: number, semana: number, bonus: number) => {
+      const existeRow = getRows(await db.execute(sql`
+        SELECT id FROM copa_pontuacoes WHERE corretorId = ${corretorId} AND semana = ${semana}
+      `));
+      if (existeRow.length > 0) {
+        await db.execute(sql`
+          UPDATE copa_pontuacoes SET total = total + ${bonus}, updatedAt = NOW()
+          WHERE corretorId = ${corretorId} AND semana = ${semana}
+        `);
+      } else {
+        await db.execute(sql`
+          INSERT INTO copa_pontuacoes (corretorId, semana, agendamentos, visitas, documentacao, vendas, total, createdAt, updatedAt)
+          VALUES (${corretorId}, ${semana}, 0, 0, 0, 0, ${bonus}, NOW(), NOW())
+        `);
+      }
+    };
+
+    // === GRUPOS (ordem 1) → REPESCAGEM 1 (5º, 6º, 7º de cada grupo) ===
     if (faseAtual.tipo === "grupos" || faseAtual.ordem === 1) {
-      const faseQuartas = fases.find(f => f.tipo === "quartas" || f.ordem === 2);
-      const faseRepescagem = fases.find(f => f.tipo === "repescagem" || f.ordem === 3);
+      const faseRep1 = fases.find(f => f.tipo === "repescagem1");
+      if (!faseRep1) throw new TRPCError({ code: "BAD_REQUEST", message: "Fase Repescagem 1 não encontrada. Inicialize a Copa." });
 
-      // Buscar pontos por corretor
-      const pontosRows = getRows(await db.execute(sql`
-        SELECT corretorId, SUM(total) as pts FROM copa_pontuacoes GROUP BY corretorId
-      `)).map(r => ({ id: Number(r.corretorId), pts: Number(r.pts ?? 0) }));
-      const ptsPorId = Object.fromEntries(pontosRows.map(p => [p.id, p.pts]));
-
-      // Buscar grupos
       const gruposRows = getRows(await db.execute(sql`
-        SELECT cc.corretorId, cc.grupo FROM copa_corretores cc WHERE cc.ativo = 1
+        SELECT corretorId, grupo FROM copa_corretores WHERE ativo = 1
       `)).map(r => ({ id: Number(r.corretorId), grupo: String(r.grupo ?? "A") }));
 
       const grupoMap: Record<string, number[]> = {};
@@ -869,166 +906,208 @@ export const copaRouter = router({
         grupoMap[g.grupo].push(g.id);
       }
 
-      // Por grupo: 1º e 2º → Quartas diretos; 3º e 4º → Repescagem; 5º+ → eliminados
-      const quartasDiretos: number[] = []; // 1º e 2º de cada grupo (4 no total)
-      const repescagemIds: number[] = [];   // 3º e 4º de cada grupo (4 no total)
-
-      for (const [, membros] of Object.entries(grupoMap)) {
-        const sorted = [...membros].sort((a, b) => (ptsPorId[b] ?? 0) - (ptsPorId[a] ?? 0));
-        if (sorted.length > 0) quartasDiretos.push(sorted[0]); // 1º
-        if (sorted.length > 1) quartasDiretos.push(sorted[1]); // 2º
-        if (sorted.length > 2) repescagemIds.push(sorted[2]);  // 3º
-        if (sorted.length > 3) repescagemIds.push(sorted[3]);  // 4º
-        // 5º, 6º, 7º são eliminados (não entram em nenhuma fase)
+      const gruposOrdenados = Object.keys(grupoMap).sort();
+      const rankingGrupos: Record<string, number[]> = {};
+      for (const grupo of gruposOrdenados) {
+        rankingGrupos[grupo] = await rankearPorPontos(grupoMap[grupo] ?? []);
       }
 
-      // Criar confrontos das Quartas (4 diretos = 2 duelos; 2 vagas reservadas para vencedores da repescagem)
-      if (faseQuartas) {
-        const existingQ = getRows(await db.execute(sql`SELECT id, corretorAId FROM copa_confrontos WHERE faseId = ${faseQuartas.id}`));
-        if (existingQ.length === 0) {
-          // Criar 2 duelos com os 4 diretos: 1º A vs 2º B e 2º A vs 1º B (cruzamento)
-          // quartasDiretos = [1ºA, 2ºA, 1ºB, 2ºB] (ordem de entrada por grupo)
-          const [p1A, p2A, p1B, p2B] = quartasDiretos;
-          if (p1A && p2B) await criarConfronto(faseQuartas.id, p1A, p2B, 9);
-          if (p2A && p1B) await criarConfronto(faseQuartas.id, p2A, p1B, 9);
-          // Mais 1 slot vazio para vencedor da repescagem
-          if (repescagemIds.length > 0) {
-            await db.execute(sql`INSERT INTO copa_confrontos (faseId, corretorAId, corretorBId, semanaRef, posicao) VALUES (${faseQuartas.id}, NULL, NULL, 9, 3)`);
-          }
-        } else {
-          // Preencher slot vazio com vencedor da repescagem (se houver)
-          const emptySlots = existingQ.filter(r => !r.corretorAId).map(r => Number(r.id));
-          // Slots vazios serão preenchidos quando a repescagem avançar
-          void emptySlots;
+      // Aplicar bônus de posição no grupo (1º=+10, 2º=+9, ..., 7º=+4) na semana 7
+      const bonusPorPosicao = [10, 9, 8, 7, 6, 5, 4];
+      for (const membrosOrdenados of Object.values(rankingGrupos)) {
+        for (let i = 0; i < membrosOrdenados.length && i < bonusPorPosicao.length; i++) {
+          const cId = membrosOrdenados[i];
+          if (cId) await aplicarBonus(cId, 7, bonusPorPosicao[i]!);
         }
       }
 
-      // Criar confrontos da Repescagem (3º e 4º de cada grupo, cruzados)
-      if (faseRepescagem && repescagemIds.length >= 2) {
-        const existingR = getRows(await db.execute(sql`SELECT id, corretorAId FROM copa_confrontos WHERE faseId = ${faseRepescagem.id}`));
-        if (existingR.length === 0) {
-          // Cruzamento: 3º A vs 4º B e 4º A vs 3º B
-          const [r3A, r3B, r4A, r4B] = repescagemIds.length >= 4
-            ? [repescagemIds[0], repescagemIds[2], repescagemIds[1], repescagemIds[3]]
-            : [repescagemIds[0], repescagemIds[1], null, null];
-          if (r3A && r4B) await criarConfronto(faseRepescagem.id, r3A, r4B, 8);
-          if (r4A && r3B) await criarConfronto(faseRepescagem.id, r4A, r3B, 8);
-        }
+      // 5º (idx 4), 6º (idx 5), 7º (idx 6) → Repescagem 1 (semanaRef=8)
+      const grupoA = rankingGrupos[gruposOrdenados[0]] ?? [];
+      const grupoB = rankingGrupos[gruposOrdenados[1]] ?? [];
+
+      const rep1Duelos: [number, number][] = ([
+        [grupoA[4], grupoB[5]], // 5ºA vs 6ºB
+        [grupoA[5], grupoB[4]], // 6ºA vs 5ºB
+        [grupoA[6], grupoB[6]], // 7ºA vs 7ºB
+      ] as (number | undefined)[][]).filter(([a, b]) => a != null && b != null) as [number, number][];
+
+      for (const [aId, bId] of rep1Duelos) {
+        await criarConfronto(faseRep1.id, aId, bId, 8);
       }
 
-      return { success: true, proximaFase: `${faseQuartas?.nome ?? "Quartas"} + ${faseRepescagem?.nome ?? "Repescagem"}` };
+      return { success: true, proximaFase: faseRep1.nome };
     }
 
-    // === REPESCAGEM (ordem 3) → preenche slot vazio nas QUARTAS ===
-    if (faseAtual.tipo === "repescagem" || faseAtual.ordem === 3) {
-      const faseQuartas = fases.find(f => f.tipo === "quartas" || f.ordem === 2);
-      if (!faseQuartas) throw new TRPCError({ code: "BAD_REQUEST", message: "Fase quartas não encontrada" });
+    // === REPESCAGEM 1 (ordem 2) → OITAVAS DE FINAL (5 duelos) ===
+    if (faseAtual.tipo === "repescagem1" || faseAtual.ordem === 2) {
+      const faseOitavas = fases.find(f => f.tipo === "oitavas");
+      if (!faseOitavas) throw new TRPCError({ code: "BAD_REQUEST", message: "Fase Oitavas não encontrada. Inicialize a Copa." });
 
-      // Os 2 vencedores da repescagem preenchem o slot vazio das quartas
-      // vencedores já foi calculado acima (vencedores da faseAtual = repescagem)
-      const emptySlots = getRows(await db.execute(sql`
-        SELECT id FROM copa_confrontos WHERE faseId = ${faseQuartas.id} AND corretorAId IS NULL ORDER BY id
-      `)).map(r => Number(r.id));
+      // Top 2 vencedores (por pts geral) avançam para Oitavas; 3º vencedor eliminado
+      const vencedoresRanked = await rankearPorPontos(vencedores);
+      const repAdvancam = vencedoresRanked.slice(0, 2);
 
-      if (emptySlots.length > 0 && vencedores.length >= 2) {
-        // Preencher o slot vazio com os 2 vencedores da repescagem
-        await atualizarConfronto(emptySlots[0], vencedores[0], vencedores[1]);
+      // Ranking de 1º-4º de cada grupo para os 8 diretos
+      const gruposRows = getRows(await db.execute(sql`
+        SELECT corretorId, grupo FROM copa_corretores WHERE ativo = 1
+      `)).map(r => ({ id: Number(r.corretorId), grupo: String(r.grupo ?? "A") }));
+
+      const grupoMap: Record<string, number[]> = {};
+      for (const g of gruposRows) {
+        if (!grupoMap[g.grupo]) grupoMap[g.grupo] = [];
+        grupoMap[g.grupo].push(g.id);
+      }
+
+      const gruposOrdenados = Object.keys(grupoMap).sort();
+      const grupoA_ranked = await rankearPorPontos(grupoMap[gruposOrdenados[0]] ?? []);
+      const grupoB_ranked = await rankearPorPontos(grupoMap[gruposOrdenados[1]] ?? []);
+      const diretosA = grupoA_ranked.slice(0, 4);
+      const diretosB = grupoB_ranked.slice(0, 4);
+
+      // 5 duelos cruzados (semanaRef=9): 1ºA vs 4ºB, 2ºA vs 3ºB, 3ºA vs 2ºB, 4ºA vs 1ºB + rep1 vs rep2
+      const oitavasDuelos: [number, number][] = ([
+        [diretosA[0], diretosB[3]],
+        [diretosA[1], diretosB[2]],
+        [diretosA[2], diretosB[1]],
+        [diretosA[3], diretosB[0]],
+        [repAdvancam[0], repAdvancam[1]],
+      ] as (number | undefined)[][]).filter(([a, b]) => a != null && b != null) as [number, number][];
+
+      for (const [aId, bId] of oitavasDuelos) {
+        await criarConfronto(faseOitavas.id, aId, bId, 9);
+      }
+
+      return { success: true, proximaFase: faseOitavas.nome };
+    }
+
+    // === OITAVAS (ordem 3) → REPESCAGEM 2 (4 melhores perdedores em 2 duelos) ===
+    if (faseAtual.tipo === "oitavas" || faseAtual.ordem === 3) {
+      const faseRep2 = fases.find(f => f.tipo === "repescagem2");
+      if (!faseRep2) throw new TRPCError({ code: "BAD_REQUEST", message: "Fase Repescagem 2 não encontrada. Inicialize a Copa." });
+
+      // perdedores = 5 losers; pior (5º) eliminado direto; top 4 jogam 2 duelos
+      const perdedoresRanked = await rankearPorPontos(perdedores);
+      const rep2Jogadores = perdedoresRanked.slice(0, 4);
+
+      if (rep2Jogadores.length >= 4) {
+        await criarConfronto(faseRep2.id, rep2Jogadores[0]!, rep2Jogadores[3]!, 10);
+        await criarConfronto(faseRep2.id, rep2Jogadores[1]!, rep2Jogadores[2]!, 10);
+      }
+
+      return { success: true, proximaFase: faseRep2.nome };
+    }
+
+    // === REPESCAGEM 2 (ordem 4) → QUARTAS DE FINAL (3 duelos + 1 bye) ===
+    if (faseAtual.tipo === "repescagem2" || faseAtual.ordem === 4) {
+      const faseQuartas = fases.find(f => f.tipo === "quartas");
+      if (!faseQuartas) throw new TRPCError({ code: "BAD_REQUEST", message: "Fase Quartas não encontrada. Inicialize a Copa." });
+
+      // Recuperar os 5 vencedores das Oitavas do banco
+      const faseOitavas = fases.find(f => f.tipo === "oitavas");
+      if (!faseOitavas) throw new TRPCError({ code: "BAD_REQUEST", message: "Fase Oitavas não encontrada" });
+
+      const oitavasVencedores = getRows(await db.execute(sql`
+        SELECT vencedorId FROM copa_confrontos
+        WHERE faseId = ${faseOitavas.id} AND vencedorId IS NOT NULL
+        ORDER BY id
+      `)).map(r => Number(r.vencedorId));
+
+      // 7 jogadores: 5 das Oitavas + 2 da Repescagem 2
+      const todos7 = [...oitavasVencedores, ...vencedores];
+      const todos7Ranked = await rankearPorPontos(todos7);
+
+      // Melhor → bye; restantes 6 → 3 duelos (semanaRef=11)
+      const byeId = todos7Ranked[0];
+      const duelistas = todos7Ranked.slice(1);
+
+      if (duelistas.length >= 6) {
+        await criarConfronto(faseQuartas.id, duelistas[0]!, duelistas[5]!, 11);
+        await criarConfronto(faseQuartas.id, duelistas[1]!, duelistas[4]!, 11);
+        await criarConfronto(faseQuartas.id, duelistas[2]!, duelistas[3]!, 11);
+      }
+      if (byeId) {
+        await criarConfronto(faseQuartas.id, byeId, null, 11);
       }
 
       return { success: true, proximaFase: faseQuartas.nome };
     }
 
-    // === QUARTAS (ordem 2) → SEMIFINAL (ordem 4): 3 vencedores + 1 bye ===
-    if (faseAtual.tipo === "quartas" || faseAtual.ordem === 2) {
-      const faseSemi = fases.find(f => f.tipo === "semifinal" || f.ordem === 4);
-      if (!faseSemi) throw new TRPCError({ code: "BAD_REQUEST", message: "Fase semifinal não encontrada" });
+    // === QUARTAS (ordem 5) → SEMIFINAL (2 duelos) ===
+    if (faseAtual.tipo === "quartas" || faseAtual.ordem === 5) {
+      const faseSemi = fases.find(f => f.tipo === "semifinal");
+      if (!faseSemi) throw new TRPCError({ code: "BAD_REQUEST", message: "Fase Semifinal não encontrada. Inicialize a Copa." });
 
-      // Buscar todos os vencedores das quartas (3 duelos = 3 vencedores)
-      // O melhor classificado geral entre os vencedores recebe o bye
-      const pontosVencedores = getRows(await db.execute(sql`
-        SELECT corretorId, SUM(total) as pts FROM copa_pontuacoes
-        WHERE corretorId IN (${sql.join(vencedores.map(v => sql`${v}`), sql`, `)})
-        GROUP BY corretorId
-      `)).map(r => ({ id: Number(r.corretorId), pts: Number(r.pts ?? 0) }));
+      // vencedores = 3 duelos winners + bye player
+      const byeRows = getRows(await db.execute(sql`
+        SELECT corretorAId FROM copa_confrontos
+        WHERE faseId = ${faseAtualId} AND corretorBId IS NULL AND corretorAId IS NOT NULL
+      `));
+      const byeId = byeRows[0]?.corretorAId ? Number(byeRows[0].corretorAId) : null;
 
-      const vencedoresOrdenados = [...vencedores].sort((a, b) => {
-        const ptsA = pontosVencedores.find(p => p.id === a)?.pts ?? 0;
-        const ptsB = pontosVencedores.find(p => p.id === b)?.pts ?? 0;
-        return ptsB - ptsA;
-      });
+      const todos4 = byeId ? [...vencedores, byeId] : vencedores;
+      const todos4Ranked = await rankearPorPontos(todos4);
 
-      const byeId = vencedoresOrdenados[0]; // melhor classificado → bye
-      const semiDuelistas = vencedoresOrdenados.slice(1); // outros 2 → duelo
-
-      const existingSemi = getRows(await db.execute(sql`SELECT id, corretorAId FROM copa_confrontos WHERE faseId = ${faseSemi.id}`));
-      if (existingSemi.length === 0) {
-        // Criar 1 duelo entre os 2 piores classificados
-        if (semiDuelistas.length >= 2) {
-          await criarConfronto(faseSemi.id, semiDuelistas[0], semiDuelistas[1], 10);
-        }
-        // Criar 1 registro de bye para o melhor (corretorBId = NULL)
-        if (byeId) {
-          await db.execute(sql`
-            INSERT INTO copa_confrontos (faseId, corretorAId, corretorBId, semanaRef, posicao)
-            VALUES (${faseSemi.id}, ${byeId}, NULL, 10, 2)
-          `);
-        }
+      // 2 duelos (semanaRef=12): 1º vs 4º, 2º vs 3º
+      if (todos4Ranked.length >= 4) {
+        await criarConfronto(faseSemi.id, todos4Ranked[0]!, todos4Ranked[3]!, 12);
+        await criarConfronto(faseSemi.id, todos4Ranked[1]!, todos4Ranked[2]!, 12);
+      } else if (todos4Ranked.length >= 2) {
+        await criarConfronto(faseSemi.id, todos4Ranked[0]!, todos4Ranked[1]!, 12);
       }
 
       return { success: true, proximaFase: faseSemi.nome };
     }
 
-    // === SEMIFINAL (ordem 4) → 3º LUGAR (ordem 5) + FINAL (ordem 6) ===
-    if (faseAtual.tipo === "semifinal" || faseAtual.ordem === 4) {
-      const fase3o = fases.find(f => f.tipo === "terceiro" || f.ordem === 5);
-      const faseFinal = fases.find(f => f.tipo === "final" || f.ordem === 6);
+    // === SEMIFINAL (ordem 6) → GRANDE FINAL (ordem 8) + 3º LUGAR (ordem 7) ===
+    if (faseAtual.tipo === "semifinal" || faseAtual.ordem === 6) {
+      const fase3o = fases.find(f => f.tipo === "terceiro");
+      const faseFinal = fases.find(f => f.tipo === "final");
+      if (!fase3o || !faseFinal) throw new TRPCError({ code: "BAD_REQUEST", message: "Fases de Final/3º Lugar não encontradas. Inicialize a Copa." });
 
-      // Vencedores do duelo semi + o bye → Final
-      // Perdedor do duelo semi → 3º Lugar
-      // O bye não tem perdedor (corretorBId = NULL), então filtrar apenas duelos reais
-      const duelosSemi = getRows(await db.execute(sql`
-        SELECT vencedorId, corretorAId, corretorBId FROM copa_confrontos
-        WHERE faseId = ${faseAtualId} AND corretorBId IS NOT NULL AND vencedorId IS NOT NULL
-      `));
-      const byeSemi = getRows(await db.execute(sql`
-        SELECT corretorAId FROM copa_confrontos
-        WHERE faseId = ${faseAtualId} AND corretorBId IS NULL AND corretorAId IS NOT NULL
-      `));
+      // vencedores = 2 semifinal winners → Final; perdedores → 3º Lugar (semanaRef=13)
+      if (vencedores.length >= 2) {
+        await criarConfronto(faseFinal.id, vencedores[0]!, vencedores[1]!, 13);
+      }
+      if (perdedores.length >= 2) {
+        await criarConfronto(fase3o.id, perdedores[0]!, perdedores[1]!, 13);
+      }
 
-      const vencedorDuelo = duelosSemi[0]?.vencedorId ? Number(duelosSemi[0].vencedorId) : null;
-      const perdedorDuelo = duelosSemi[0]
-        ? (Number(duelosSemi[0].vencedorId) === Number(duelosSemi[0].corretorAId)
-          ? Number(duelosSemi[0].corretorBId)
-          : Number(duelosSemi[0].corretorAId))
+      return { success: true, proximaFase: `${faseFinal.nome} + ${fase3o.nome}` };
+    }
+
+    // === FINAL (ordem 8) → PREMIAÇÃO: aplicar bônus finais ===
+    if (faseAtual.tipo === "final" || faseAtual.ordem === 8) {
+      // vencedores[0] = campeão, perdedores[0] = vice
+      const campeaoId = vencedores[0];
+      const viceId = perdedores[0];
+
+      // Resultado do 3º Lugar
+      const fase3o = fases.find(f => f.tipo === "terceiro");
+      if (!fase3o) throw new TRPCError({ code: "BAD_REQUEST", message: "Fase 3º Lugar não encontrada" });
+
+      const t3Row = getRows(await db.execute(sql`
+        SELECT vencedorId, corretorAId, corretorBId
+        FROM copa_confrontos WHERE faseId = ${fase3o.id} AND vencedorId IS NOT NULL LIMIT 1
+      `))[0];
+
+      const vencedor3o = t3Row?.vencedorId ? Number(t3Row.vencedorId) : null;
+      const perdedor3o = t3Row
+        ? (Number(t3Row.vencedorId) === Number(t3Row.corretorAId) ? Number(t3Row.corretorBId) : Number(t3Row.corretorAId))
         : null;
-      const byeCorretor = byeSemi[0]?.corretorAId ? Number(byeSemi[0].corretorAId) : null;
 
-      // Final: vencedor do duelo + bye
-      if (faseFinal && vencedorDuelo && byeCorretor) {
-        const existingFinal = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE faseId = ${faseFinal.id}`));
-        if (existingFinal.length === 0) {
-          await criarConfronto(faseFinal.id, byeCorretor, vencedorDuelo, 11);
-        } else {
-          await atualizarConfronto(Number(existingFinal[0].id), byeCorretor, vencedorDuelo);
-        }
+      // Aplicar bônus finais na semana 13
+      const bonusFinais: { id: number | undefined | null; bonus: number }[] = [
+        { id: campeaoId, bonus: 10 },
+        { id: viceId,    bonus: 7  },
+        { id: vencedor3o, bonus: 5 },
+        { id: perdedor3o, bonus: 3 },
+      ];
+      for (const { id, bonus } of bonusFinais) {
+        if (id) await aplicarBonus(id, 13, bonus);
       }
 
-      // 3º Lugar: perdedor do duelo semi
-      if (fase3o && perdedorDuelo) {
-        const existing3o = getRows(await db.execute(sql`SELECT id FROM copa_confrontos WHERE faseId = ${fase3o.id}`));
-        if (existing3o.length === 0) {
-          // 3º lugar: perdedor vs placeholder (só 1 duelo se houver apenas 1 perdedor)
-          // Como só há 1 perdedor real (o bye não perde), registrar como confronto solo
-          await db.execute(sql`
-            INSERT INTO copa_confrontos (faseId, corretorAId, corretorBId, semanaRef, posicao)
-            VALUES (${fase3o.id}, ${perdedorDuelo}, NULL, 11, 1)
-          `);
-        } else {
-          await atualizarConfronto(Number(existing3o[0].id), perdedorDuelo, perdedorDuelo);
-        }
-      }
-
-      return { success: true, proximaFase: "Grande Final + Disputa 3º Lugar (Semana 11)" };
+      const fasePremio = fases.find(f => f.tipo === "premiacao");
+      return { success: true, proximaFase: fasePremio?.nome ?? "Premiação" };
     }
 
     throw new TRPCError({ code: "BAD_REQUEST", message: `Fase "${faseAtual.nome}" não tem transição definida` });
