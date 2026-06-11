@@ -130,12 +130,7 @@ async function startServer() {
       console.error("[Job] Erro ao inicializar job de distribuição:", err);
     });
     
-    // Inicializar job de follow-up
-    import("../followup").then(() => {
-      console.log("[Job] Módulo de follow-up carregado");
-    }).catch(err => {
-      console.error("[Job] Erro ao carregar módulo de follow-up:", err);
-    });
+    // [DESATIVADO] Job de follow-up por email desativado (solicitado pelo admin)
     
     // [DESATIVADO] Job de conquistas removido para reduzir custos de Cloud
     
@@ -229,13 +224,7 @@ async function startServer() {
       console.error("[Job] Erro ao inicializar job de lembretes WhatsApp:", err);
     });
 
-    // Inicializar job de avisos de follow-up vencido (diário às 09h SP)
-    import("../followupVencidoJob").then(({ startFollowupVencidoJob }) => {
-      startFollowupVencidoJob();
-      console.log("[Job] Avisos de follow-up vencido inicializados (diário às 09h SP)");
-    }).catch(err => {
-      console.error("[Job] Erro ao inicializar job de follow-up vencido:", err);
-    });
+    // [DESATIVADO] Job de avisos de follow-up vencido (WhatsApp) desativado (solicitado pelo admin)
   });
 }
 

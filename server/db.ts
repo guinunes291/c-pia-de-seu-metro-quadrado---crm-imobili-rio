@@ -3782,23 +3782,7 @@ export async function processarLeadWebhook(webhookToken: string, dadosLead: {
       const projeto = leadCriado.projectId ? await getProjectById(leadCriado.projectId) : null;
       
       if (corretor) {
-        // Enviar notificação por EMAIL
-        try {
-          const { enviarNotificacaoLeadWebhook } = await import('./emailService');
-          await enviarNotificacaoLeadWebhook({
-            corretorNome: corretor.name,
-            corretorEmail: corretor.email,
-            leadNome: leadCriado.nome,
-            leadTelefone: leadCriado.telefone,
-            leadEmail: leadCriado.email || undefined,
-            leadOrigem: leadCriado.origem,
-            leadProjeto: projeto?.nome,
-            leadCampanha: leadCriado.campanha || undefined,
-            leadFaixaRenda: leadCriado.faixaRenda || undefined,
-          });
-        } catch (emailError) {
-          console.error('[Webhook] Erro ao enviar email:', emailError);
-        }
+        // Email de novo lead desativado (solicitado pelo admin)
         
         // Enviar notificação via Zapier (WhatsApp) - se configurado
         try {
@@ -3942,23 +3926,7 @@ export async function processarLeadWebhookFoco(webhookToken: string, dadosLead: 
       const projeto = leadCriado.projectId ? await getProjectById(leadCriado.projectId) : null;
       
       if (corretor) {
-        // Enviar notificação por EMAIL
-        try {
-          const { enviarNotificacaoLeadWebhook } = await import('./emailService');
-          await enviarNotificacaoLeadWebhook({
-            corretorNome: corretor.name,
-            corretorEmail: corretor.email,
-            leadNome: leadCriado.nome,
-            leadTelefone: leadCriado.telefone,
-            leadEmail: leadCriado.email || undefined,
-            leadOrigem: leadCriado.origem,
-            leadProjeto: projeto?.nome,
-            leadCampanha: undefined,
-            leadFaixaRenda: leadCriado.faixaRenda || undefined,
-          });
-        } catch (emailError) {
-          console.error('[Webhook Foco] Erro ao enviar email:', emailError);
-        }
+        // Email de lead redistribuído desativado (solicitado pelo admin)
         
         // Enviar notificação via Zapier (WhatsApp) - usando URL configurada na fila Foco
         try {
