@@ -135,8 +135,6 @@ export default function Leads() {
   const [origemFilter, setOrigemFilter] = useState<string>("all");
   const [corretorFilter, setCorretorFilter] = useState<string>("all");
   const [temperaturaFilter, setTemperaturaFilter] = useState<string>("all"); // Fase 2
-  const [somenteFollowupHoje, setSomenteFollowupHoje] = useState(false);
-  const [paradosDias, setParadosDias] = useState<number | null>(null);
   const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>("all");
   const [customDateStart, setCustomDateStart] = useState<Date | undefined>();
   const [customDateEnd, setCustomDateEnd] = useState<Date | undefined>();
@@ -168,8 +166,6 @@ export default function Leads() {
     temperatura: temperaturaFilter !== 'all' ? temperaturaFilter as 'quente' | 'morno' | 'frio' : undefined, // Fase 2
     dataInicio: dataInicioFilter || undefined,
     dataFim: dataFimFilter || undefined,
-    somenteFollowupHoje: somenteFollowupHoje || undefined,
-    paradosDias: paradosDias ?? undefined,
   }, {
     keepPreviousData: true, // Evita tela branca durante re-fetch
     refetchInterval: 30 * 1000, // Atualiza a cada 30s para tempo real
@@ -282,6 +278,10 @@ export default function Leads() {
     },
   });
   const { data: leadHistory } = trpc.leads.getHistory.useQuery(
+    { leadId: selectedLead?.id || 0 },
+    { enabled: !!selectedLead }
+  );
+  const { data: timeline, isLoading: timelineLoading } = trpc.leads.getTimeline.useQuery(
     { leadId: selectedLead?.id || 0 },
     { enabled: !!selectedLead }
   );
@@ -851,35 +851,6 @@ export default function Leads() {
                 >
                   {pill.label}
                   {pill.count > 0 && <span className={`ml-0.5 ${statusFilter === pill.value ? 'opacity-80' : 'opacity-60'}`}>({pill.count})</span>}
-                </button>
-              ))}
-            </div>
-
-            {/* Filtros rápidos */}
-            <div className="flex gap-1.5 flex-wrap">
-              <button
-                onClick={() => { setSomenteFollowupHoje(v => !v); setParadosDias(null); setCurrentPage(1); }}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                  somenteFollowupHoje
-                    ? 'bg-blue-500 text-white border-blue-500'
-                    : 'bg-background text-muted-foreground border-border hover:border-blue-400 hover:text-foreground'
-                }`}
-              >
-                <Clock className="h-3 w-3" />
-                Follow-up hoje
-              </button>
-              {([3, 7] as const).map(dias => (
-                <button
-                  key={dias}
-                  onClick={() => { setParadosDias(paradosDias === dias ? null : dias); setSomenteFollowupHoje(false); setCurrentPage(1); }}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                    paradosDias === dias
-                      ? 'bg-orange-500 text-white border-orange-500'
-                      : 'bg-background text-muted-foreground border-border hover:border-orange-400 hover:text-foreground'
-                  }`}
-                >
-                  <AlertCircle className="h-3 w-3" />
-                  Parados +{dias}d
                 </button>
               ))}
             </div>
@@ -2072,55 +2043,100 @@ export default function Leads() {
 
                 <Separator />
 
-                {/* Histórico de interações */}
+                {/* Timeline unificada */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold">Histórico de Interações</h3>
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      Timeline do Lead
+                    </h3>
                     <Button
                       size="sm"
-                      onClick={() => {
-                        setInteractionDialog(true);
-                        // Não fechar o modal de detalhes — mantém contexto do lead
-                      }}
+                      onClick={() => { setInteractionDialog(true); }}
                     >
                       <MessageSquare className="h-4 w-4 mr-2" />
                       Nova Interação
                     </Button>
                   </div>
-                  
-                  {leadHistory && leadHistory.length > 0 ? (
-                    <div className="space-y-3 max-h-[300px] overflow-y-auto">
-                      {leadHistory.map((interaction: any) => (
-                        <div key={interaction.id} className="p-3 border rounded-lg bg-muted/50">
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <Badge variant="outline">{tipoLabels[interaction.tipo]}</Badge>
-                              <Badge variant="secondary">{resultadoLabels[interaction.resultado]}</Badge>
-                              {interaction.corretorNome && (
-                                <span className="text-xs text-muted-foreground font-medium">{interaction.corretorNome}</span>
+
+                  {timelineLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : timeline && timeline.length > 0 ? (
+                    <div className="relative space-y-0 max-h-[500px] overflow-y-auto pl-4">
+                      {/* Linha vertical */}
+                      <div className="absolute left-[23px] top-0 bottom-0 w-px bg-border" />
+                      {timeline.map((evento: any) => {
+                        const cfg = {
+                          interacao: { icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950', label: 'Interação' },
+                          status: { icon: RefreshCw, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950', label: 'Status' },
+                          agendamento: { icon: CalendarPlus, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950', label: 'Agendamento' },
+                          visita: { icon: Eye, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-950', label: 'Visita' },
+                          proposta: { icon: FileText, color: 'text-yellow-600', bg: 'bg-yellow-50 dark:bg-yellow-950', label: 'Proposta' },
+                        }[evento.tipo as string] || { icon: MessageSquare, color: 'text-muted-foreground', bg: 'bg-muted', label: evento.tipo };
+                        const Icon = cfg.icon;
+                        const d = evento.data;
+                        return (
+                          <div key={evento.id} className="relative flex gap-3 pb-4">
+                            {/* Ícone no eixo */}
+                            <div className={`relative z-10 flex-shrink-0 w-8 h-8 rounded-full ${cfg.bg} flex items-center justify-center mt-0.5`}>
+                              <Icon className={`h-3.5 w-3.5 ${cfg.color}`} />
+                            </div>
+                            {/* Conteúdo */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2 mb-0.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
+                                  {evento.tipo === 'interacao' && d.tipo && (
+                                    <Badge variant="outline" className="text-xs px-1.5 py-0">{tipoLabels[d.tipo] || d.tipo}</Badge>
+                                  )}
+                                  {evento.tipo === 'interacao' && d.resultado && (
+                                    <Badge variant="secondary" className="text-xs px-1.5 py-0">{resultadoLabels[d.resultado] || d.resultado}</Badge>
+                                  )}
+                                  {evento.tipo === 'status' && d.statusAnterior && d.statusNovo && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {statusLabels[d.statusAnterior] || d.statusAnterior}
+                                      <span className="mx-1">→</span>
+                                      <span className="font-medium">{statusLabels[d.statusNovo] || d.statusNovo}</span>
+                                    </span>
+                                  )}
+                                  {evento.tipo === 'agendamento' && (
+                                    <Badge variant="outline" className="text-xs px-1.5 py-0">{d.status || 'pendente'}</Badge>
+                                  )}
+                                  {evento.tipo === 'visita' && d.resultado && (
+                                    <Badge variant="outline" className="text-xs px-1.5 py-0">{d.resultado.replace(/_/g, ' ')}</Badge>
+                                  )}
+                                  {evento.tipo === 'proposta' && d.status && (
+                                    <Badge variant="outline" className="text-xs px-1.5 py-0">{d.status}</Badge>
+                                  )}
+                                  {d.corretorNome && (
+                                    <span className="text-xs text-muted-foreground">· {d.corretorNome}</span>
+                                  )}
+                                </div>
+                                <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
+                                  {format(new Date(evento.createdAt), "dd/MM HH:mm", { locale: ptBR })}
+                                </span>
+                              </div>
+                              {(d.observacoes || d.observacao) && (
+                                <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
+                                  {d.observacoes || d.observacao}
+                                </p>
+                              )}
+                              {evento.tipo === 'agendamento' && d.dataAgendamento && (
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {format(new Date(d.dataAgendamento), "dd/MM/yyyy", { locale: ptBR })} às {d.horaAgendamento || '--:--'}
+                                </p>
                               )}
                             </div>
-                            <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
-                              {format(new Date(interaction.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                            </span>
                           </div>
-                          {interaction.observacoes && (
-                            <p className="text-sm text-muted-foreground mt-2">
-                              {interaction.observacoes}
-                            </p>
-                          )}
-                          {(interaction.statusAnterior && interaction.statusNovo) && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Status: {statusLabels[interaction.statusAnterior] || interaction.statusAnterior} → {statusLabels[interaction.statusNovo] || interaction.statusNovo}
-                            </p>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">
-                      <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">Nenhuma interação registrada ainda</p>
+                      <Clock className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">Nenhuma atividade registrada ainda</p>
                     </div>
                   )}
                 </div>

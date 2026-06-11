@@ -71,6 +71,8 @@ export const leadsRouter = router({
       temperatura: z.enum(["quente", "morno", "frio"]).optional(), // Fase 2
       dataInicio: z.string().optional(),
       dataFim: z.string().optional(),
+      somenteFollowupHoje: z.boolean().optional(),
+      paradosDias: z.number().optional(),
     }).optional())
     .query(async ({ ctx, input }) => {
       const page = input?.page || 1;
@@ -83,6 +85,8 @@ export const leadsRouter = router({
       const temperatura = input?.temperatura; // Fase 2
       const dataInicio = input?.dataInicio;
       const dataFim = input?.dataFim;
+      const somenteFollowupHoje = input?.somenteFollowupHoje;
+      const paradosDias = input?.paradosDias;
 
       const { getCorretoresIdsParaFiltro } = await import('../equipes');
       const corretoresIds = await getCorretoresIdsParaFiltro(ctx.user.id, ctx.user.role);
@@ -98,7 +102,9 @@ export const leadsRouter = router({
         corretoresIds,
         temperatura, // Fase 2
         dataInicio,
-        dataFim
+        dataFim,
+        somenteFollowupHoje,
+        paradosDias,
       });
     }),
 
@@ -438,7 +444,7 @@ export const leadsRouter = router({
       // Push notification imediata para o novo corretor (non-blocking)
       sendPushNotification(input.novoCorretorId, {
         title: 'Novo Lead!',
-        body: `${lead.nome} \u2014 acesse agora`,
+        body: `${lead.nome} — acesse agora`,
         url: `/leads?leadId=${input.leadId}`,
         tag: `lead-novo-${input.leadId}`,
         requireInteraction: true,
@@ -493,7 +499,7 @@ export const leadsRouter = router({
       // Push notification imediata para o novo corretor (non-blocking)
       sendPushNotification(input.novoCorretorId, {
         title: 'Novo Lead!',
-        body: `${lead.nome} \u2014 acesse agora`,
+        body: `${lead.nome} — acesse agora`,
         url: `/leads?leadId=${input.leadId}`,
         tag: `lead-novo-${input.leadId}`,
         requireInteraction: true,
@@ -559,8 +565,8 @@ export const leadsRouter = router({
       // Push notification consolidada — um único alerta com o total de leads transferidos
       if (transferidos > 0) {
         const body = transferidos === 1
-          ? `Você recebeu 1 novo lead \u2014 acesse agora`
-          : `Você recebeu ${transferidos} novos leads \u2014 acesse agora`;
+          ? `Você recebeu 1 novo lead — acesse agora`
+          : `Você recebeu ${transferidos} novos leads — acesse agora`;
         sendPushNotification(input.novoCorretorId, {
           title: 'Novos Leads!',
           body,
@@ -613,7 +619,7 @@ export const leadsRouter = router({
       // Push notification imediata para o corretor atribuido (non-blocking)
       sendPushNotification(input.corretorId, {
         title: 'Novo Lead!',
-        body: `${lead.nome} \u2014 acesse agora`,
+        body: `${lead.nome} — acesse agora`,
         url: `/leads?leadId=${input.leadId}`,
         tag: `lead-novo-${input.leadId}`,
         requireInteraction: true,
@@ -769,6 +775,45 @@ export const leadsRouter = router({
         mediaMinPorLead: String(input.mediaMinPorLead.toFixed(2)),
       });
       return { success: true };
+    }),
+
+  getTimeline: corretorProcedure
+    .input(z.object({ leadId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const lead = await db.getLeadById(input.leadId);
+      if (!lead) throw new TRPCError({ code: 'NOT_FOUND', message: 'Lead não encontrado' });
+      if (ctx.user.role === 'corretor' && lead.corretorId !== ctx.user.id) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso negado' });
+      }
+
+      const [historico, transicoes, agendamentos, visitas, propostas] = await Promise.all([
+        db.getLeadHistory(input.leadId),
+        db.getHistoricoTransicoesLead(input.leadId),
+        db.getAgendamentosLead(input.leadId),
+        db.getVisitasLead(input.leadId),
+        db.getPropostasLead(input.leadId),
+      ]);
+
+      const events: Array<{ id: string; tipo: string; data: Record<string, any>; createdAt: Date | string }> = [];
+
+      for (const h of historico ?? []) {
+        events.push({ id: `hist-${h.id}`, tipo: 'interacao', data: h as any, createdAt: h.createdAt });
+      }
+      for (const t of transicoes ?? []) {
+        events.push({ id: `trans-${t.id}`, tipo: 'status', data: t as any, createdAt: t.createdAt });
+      }
+      for (const a of agendamentos ?? []) {
+        events.push({ id: `agend-${a.id}`, tipo: 'agendamento', data: a as any, createdAt: a.createdAt });
+      }
+      for (const v of visitas ?? []) {
+        events.push({ id: `visita-${v.id}`, tipo: 'visita', data: v as any, createdAt: v.createdAt });
+      }
+      for (const p of propostas ?? []) {
+        events.push({ id: `prop-${p.id}`, tipo: 'proposta', data: p as any, createdAt: p.createdAt });
+      }
+
+      events.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return events;
     }),
 
   listarSessoesBlitz: protectedProcedure
