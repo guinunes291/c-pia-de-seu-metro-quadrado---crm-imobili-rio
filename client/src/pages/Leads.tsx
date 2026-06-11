@@ -451,6 +451,25 @@ export default function Leads() {
     observacoes: "",
   });
 
+  // Anotação rápida — 1 clique, salva com Enter
+  const [notaRapida, setNotaRapida] = useState("");
+  const handleNotaRapida = async () => {
+    if (!selectedLead || !notaRapida.trim()) return;
+    try {
+      await addInteractionMutation.mutateAsync({
+        leadId: selectedLead.id,
+        tipo: "outro",
+        resultado: "outro",
+        observacoes: notaRapida.trim(),
+      });
+      toast.success("Nota registrada!");
+      setNotaRapida("");
+      refetch();
+    } catch {
+      toast.error("Erro ao salvar nota");
+    }
+  };
+
   const handleAddInteraction = async () => {
     if (!selectedLead) return;
     try {
@@ -1577,6 +1596,25 @@ export default function Leads() {
                 {/* ── ABA: DETALHES ── */}
                 <TabsContent value="detalhes">
                 <div className="space-y-6">
+                {/* Anotação rápida — salva com Enter, sem modal */}
+                <div className="flex gap-2 items-center bg-muted/40 rounded-lg p-2">
+                  <MessageSquare className="h-4 w-4 text-muted-foreground shrink-0 ml-1" />
+                  <Input
+                    placeholder="Anotação rápida... (Enter para salvar)"
+                    value={notaRapida}
+                    onChange={(e) => setNotaRapida(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleNotaRapida(); } }}
+                    className="border-0 bg-transparent focus-visible:ring-0 shadow-none"
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={!notaRapida.trim() || addInteractionMutation.isPending}
+                    onClick={handleNotaRapida}
+                  >
+                    {addInteractionMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  </Button>
+                </div>
                 {/* Informações básicas */}
                 <div>
                   <h3 className="font-semibold mb-3">Informações de Contato</h3>
