@@ -386,6 +386,11 @@ export const leads = mysqlTable("leads", {
   corretorCreatedAtIdx: index("lead_corretor_created_at_idx").on(table.corretorId, table.createdAt),
   // Fase 2 — Índice de temperatura para filtro rápido
   temperaturaIdx: index("lead_temperatura_idx").on(table.temperatura),
+  // Índice para leads frios (job 30 dias) e filtros de data
+  ultimoContatoIdx: index("lead_ultimo_contato_idx").on(table.ultimoContato),
+  createdAtIdx: index("lead_created_at_idx").on(table.createdAt),
+  // Índice composto para filtro principal da lista (naLixeira + status)
+  lixeiraStatusIdx: index("lead_lixeira_status_idx").on(table.naLixeira, table.status),
 }));
 
 export type Lead = typeof leads.$inferSelect;
