@@ -991,6 +991,8 @@ export async function getAllLeads(options?: {
   temperatura?: 'quente' | 'morno' | 'frio'; // Fase 2
   dataInicio?: string;
   dataFim?: string;
+  somenteFollowupHoje?: boolean;
+  paradosDias?: number;
 }) {
   const db = await getDb();
   if (!db) return { leads: [], total: 0, page: 1, limit: 50, totalPages: 0 };
@@ -1060,6 +1062,19 @@ export async function getAllLeads(options?: {
     const dataFimDate = new Date(options.dataFim);
     dataFimDate.setHours(23, 59, 59, 999);
     conditions.push(lte(leads.createdAt, dataFimDate));
+  }
+
+  // Filtro: apenas leads com follow-up agendado para hoje
+  if (options?.somenteFollowupHoje) {
+    conditions.push(sql`DATE(${leads.proximoFollowup}) = CURDATE()`);
+    conditions.push(sql`${leads.status} != 'perdido'`);
+  }
+
+  // Filtro: leads parados há X dias sem interação
+  if (options?.paradosDias) {
+    const cutoff = new Date(Date.now() - options.paradosDias * 24 * 60 * 60 * 1000);
+    conditions.push(lte(leads.ultimaInteracao, cutoff));
+    conditions.push(sql`${leads.status} NOT IN ('perdido', 'contrato_fechado', 'pos_venda')`);
   }
   
   // Query base
@@ -1344,6 +1359,22 @@ export async function registrarTransicaoStatus(data: {
 }) {
   const db = await getDb();
   if (!db) return;
+
+  // Proteção anti-duplicação: verificar se já existe transição para o mesmo lead/status nos últimos 5 segundos
+  const cincoSegundosAtras = new Date(Date.now() - 5000);
+  const duplicata = await db.select({ id: leadStatusTransitions.id })
+    .from(leadStatusTransitions)
+    .where(and(
+      eq(leadStatusTransitions.leadId, data.leadId),
+      eq(leadStatusTransitions.statusNovo, data.statusNovo as any),
+      sql`${leadStatusTransitions.createdAt} >= ${cincoSegundosAtras}`
+    ))
+    .limit(1);
+  if (duplicata.length > 0) {
+    // Transição duplicada detectada — ignorar silenciosamente
+    return;
+  }
+
   // Inserir na tabela de transições de status (auditoria de funil)
   await db.insert(leadStatusTransitions).values({
     leadId: data.leadId,
@@ -6703,20 +6734,18 @@ export async function createVisita(data: {
   const insertId = result[0].insertId;
   
   // Se veio de um agendamento, marcar como realizado
+  // updateAgendamentoStatus já atualiza o lead para 'visita_realizada' internamente
   if (data.agendamentoId) {
     await updateAgendamentoStatus(data.agendamentoId, 'realizado');
-  }
-  
-  // Buscar o lead atual
-  const lead = await getLeadById(data.leadId);
-  
-  // Se o lead não está em status posterior a "visita_realizada", atualizar
-  const statusOrdem = ['novo', 'aguardando_atendimento', 'em_atendimento', 'agendado', 'visita_realizada', 'analise_credito', 'contrato_fechado', 'perdido'];
-  const statusAtualIdx = statusOrdem.indexOf(lead?.status || 'novo');
-  const visitaIdx = statusOrdem.indexOf('visita_realizada');
-  
-  if (statusAtualIdx < visitaIdx) {
-    await updateLead(data.leadId, { status: 'visita_realizada' });
+  } else {
+    // Sem agendamento: atualizar o status do lead diretamente se necessário
+    const lead = await getLeadById(data.leadId);
+    const statusOrdem = ['novo', 'aguardando_atendimento', 'em_atendimento', 'agendado', 'visita_realizada', 'analise_credito', 'contrato_fechado', 'perdido'];
+    const statusAtualIdx = statusOrdem.indexOf(lead?.status || 'novo');
+    const visitaIdx = statusOrdem.indexOf('visita_realizada');
+    if (statusAtualIdx < visitaIdx) {
+      await updateLead(data.leadId, { status: 'visita_realizada' });
+    }
   }
   
   // Retornar a visita criada

@@ -135,6 +135,8 @@ export default function Leads() {
   const [origemFilter, setOrigemFilter] = useState<string>("all");
   const [corretorFilter, setCorretorFilter] = useState<string>("all");
   const [temperaturaFilter, setTemperaturaFilter] = useState<string>("all"); // Fase 2
+  const [somenteFollowupHoje, setSomenteFollowupHoje] = useState(false);
+  const [paradosDias, setParadosDias] = useState<number | null>(null);
   const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>("all");
   const [customDateStart, setCustomDateStart] = useState<Date | undefined>();
   const [customDateEnd, setCustomDateEnd] = useState<Date | undefined>();
@@ -166,6 +168,8 @@ export default function Leads() {
     temperatura: temperaturaFilter !== 'all' ? temperaturaFilter as 'quente' | 'morno' | 'frio' : undefined, // Fase 2
     dataInicio: dataInicioFilter || undefined,
     dataFim: dataFimFilter || undefined,
+    somenteFollowupHoje: somenteFollowupHoje || undefined,
+    paradosDias: paradosDias ?? undefined,
   }, {
     keepPreviousData: true, // Evita tela branca durante re-fetch
     refetchInterval: 30 * 1000, // Atualiza a cada 30s para tempo real
@@ -292,6 +296,12 @@ export default function Leads() {
   const [pendingLossChange, setPendingLossChange] = useState<{leadId: number} | null>(null);
   const [motivoPerdido, setMotivoPerdido] = useState('');
   const [outroMotivo, setOutroMotivo] = useState('');
+
+  // Estado para o modal de documentação (Google Forms em iframe)
+  const [docDialog, setDocDialog] = useState(false);
+  const [docFormUrl, setDocFormUrl] = useState('');
+  const [docLeadId, setDocLeadId] = useState<number | null>(null);
+  const docIframeRef = useRef<HTMLIFrameElement>(null);
 
   // Estado para o dialog de agendamento
   const [agendamentoDialog, setAgendamentoDialog] = useState(false);
@@ -488,6 +498,18 @@ export default function Leads() {
     
     // Atualizar status normalmente
     await executeStatusUpdate(leadId, newStatus);
+  };
+
+  const openDocForm = (lead: any, tipo: 'autonomo' | 'clt') => {
+    const nome = encodeURIComponent(lead.nome || '');
+    const tel = encodeURIComponent(lead.telefone || '');
+    const corretor = encodeURIComponent(user?.name || '');
+    const url = tipo === 'autonomo'
+      ? `https://docs.google.com/forms/d/e/1FAIpQLSfTVPeCOqZtu5J3oaIq1kFIzGkij2uvF8TEEnWZymRJ1VHvaw/viewform?usp=pp_url&entry.3cc060c4=${corretor}&entry.0f929fa2=${nome}&entry.39c16c71=${tel}&embedded=true`
+      : `https://docs.google.com/forms/d/e/1FAIpQLSd7R0I0trmb2aHjfUn9lISSd6ZUSMUb06tXc6935u0U2JNWPw/viewform?usp=pp_url&entry.6cf60b1d=${corretor}&entry.3dab385a=${nome}&entry.2f291cec=${tel}&embedded=true`;
+    setDocFormUrl(url);
+    setDocLeadId(lead.id);
+    setDocDialog(true);
   };
 
   const executeStatusUpdate = async (
@@ -833,6 +855,35 @@ export default function Leads() {
               ))}
             </div>
 
+            {/* Filtros rápidos */}
+            <div className="flex gap-1.5 flex-wrap">
+              <button
+                onClick={() => { setSomenteFollowupHoje(v => !v); setParadosDias(null); setCurrentPage(1); }}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  somenteFollowupHoje
+                    ? 'bg-blue-500 text-white border-blue-500'
+                    : 'bg-background text-muted-foreground border-border hover:border-blue-400 hover:text-foreground'
+                }`}
+              >
+                <Clock className="h-3 w-3" />
+                Follow-up hoje
+              </button>
+              {([3, 7] as const).map(dias => (
+                <button
+                  key={dias}
+                  onClick={() => { setParadosDias(paradosDias === dias ? null : dias); setSomenteFollowupHoje(false); setCurrentPage(1); }}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                    paradosDias === dias
+                      ? 'bg-orange-500 text-white border-orange-500'
+                      : 'bg-background text-muted-foreground border-border hover:border-orange-400 hover:text-foreground'
+                  }`}
+                >
+                  <AlertCircle className="h-3 w-3" />
+                  Parados +{dias}d
+                </button>
+              ))}
+            </div>
+
             {/* Filtros avançados colapsáveis */}
             {showAdvancedFilters && (
               <div className={`grid gap-3 mt-3 pt-3 border-t ${isGestor ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
@@ -1154,6 +1205,21 @@ export default function Leads() {
                                 <MessageCircle className="h-4 w-4" />
                               </Button>
                             )}
+                            {lead.status !== 'perdido' && lead.status !== 'contrato_fechado' && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="outline" size="sm" className="border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950">
+                                    <FolderOpen className="h-4 w-4 mr-1" />Documentação
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuLabel>Regime de Trabalho</DropdownMenuLabel>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => openDocForm(lead, 'autonomo')}><UserIcon className="h-4 w-4 mr-2" />Autônomo</DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => openDocForm(lead, 'clt')}><Briefcase className="h-4 w-4 mr-2" />CLT</DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
                             {/* "..." overflow com ações secundárias */}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -1471,6 +1537,25 @@ export default function Leads() {
             </div>
           </div>
         )}
+
+        <Dialog open={docDialog} onOpenChange={(open) => { if (!open) { setDocDialog(false); setDocFormUrl(''); setDocLeadId(null); } }}>
+          <DialogContent className="max-w-2xl w-[95vw] p-0 overflow-hidden">
+            <DialogHeader className="px-6 pt-5 pb-3">
+              <DialogTitle className="flex items-center gap-2"><FolderOpen className="h-5 w-5 text-blue-600" />Enviar Documentação do Cliente</DialogTitle>
+              <DialogDescription>Preencha o formulário. Ao concluir, clique em <strong>Confirmar Envio</strong> para mover o lead para <strong>Análise de Crédito</strong>.</DialogDescription>
+            </DialogHeader>
+            <div className="w-full" style={{ height: '68vh' }}>
+              {docFormUrl && <iframe ref={docIframeRef} src={docFormUrl} className="w-full h-full border-0" title="Formulário de Documentação" onLoad={() => { try { const src = docIframeRef.current?.contentWindow?.location?.href || ''; if (src.includes('formResponse')) { if (docLeadId) executeStatusUpdate(docLeadId, 'analise_credito'); toast.success('Formulário enviado! Status atualizado.'); setDocDialog(false); setDocFormUrl(''); setDocLeadId(null); } } catch {} }} />}
+            </div>
+            <div className="px-6 py-4 border-t flex items-center justify-between gap-3 bg-muted/30">
+              <p className="text-xs text-muted-foreground">Após enviar o formulário, clique em <strong>Confirmar Envio</strong>.</p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => { setDocDialog(false); setDocFormUrl(''); setDocLeadId(null); }}>Fechar</Button>
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => { if (docLeadId) { executeStatusUpdate(docLeadId, 'analise_credito'); toast.success('Status atualizado para Análise de Crédito!'); } setDocDialog(false); setDocFormUrl(''); setDocLeadId(null); }}><CheckCircle2 className="h-4 w-4 mr-1" />Confirmar Envio</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Dialog de detalhes do lead */}
         <Dialog open={detailsDialog} onOpenChange={setDetailsDialog}>
