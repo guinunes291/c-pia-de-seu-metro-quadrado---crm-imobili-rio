@@ -305,6 +305,12 @@ export const leads = mysqlTable("leads", {
   ultimaInteracao: timestamp("ultimaInteracao"), // Rastreia qualquer interação (registro, mudança status, agendamento, etc)
   proximaTarefaData: timestamp("proximaTarefaData"), // Data da próxima tarefa agendada - lead fica fora do follow-up até essa data
   
+  // Triagem MCMV (elegibilidade)
+  possuiImovel: boolean("possuiImovel"), // true inabilita MCMV
+  numDependentes: int("numDependentes"),
+  rendaFamiliar: varchar("rendaFamiliar", { length: 100 }),
+  composicaoRenda: text("composicaoRenda"), // JSON: [{ nome, renda, parentesco }]
+
   // Observações
   observacoes: text("observacoes"),
   motivoPerdido: text("motivoPerdido"),

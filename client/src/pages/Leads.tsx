@@ -5,7 +5,7 @@ import {
   Phone, Mail, Building2, Calendar, MessageSquare, Search,
   Clock, AlertCircle, CheckCircle2, XCircle, Eye, LayoutGrid, List, Plus, UserPlus, Loader2, MessageCircle, CalendarPlus, FileText,
   Shield, Flame, Thermometer, Snowflake, BookOpen, Copy, Sparkles, ChevronDown, ChevronUp, RefreshCw,
-  FolderOpen, Briefcase, User as UserIcon, MoreHorizontal, Zap, SlidersHorizontal
+  FolderOpen, Briefcase, User as UserIcon, MoreHorizontal, Zap, SlidersHorizontal, Home, Users as UsersIcon
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -1996,6 +1996,109 @@ export default function Leads() {
                         value={selectedLead.dataNascimento ? new Date(selectedLead.dataNascimento).toISOString().split('T')[0] : ""}
                         onChange={(e) => setSelectedLead({ ...selectedLead, dataNascimento: e.target.value ? new Date(e.target.value) : null })}
                         onBlur={() => updateLeadMutation.mutate({ id: selectedLead.id, data: { dataNascimento: selectedLead.dataNascimento ? new Date(selectedLead.dataNascimento) : null } })}
+                      />
+                    </div>
+
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Triagem MCMV — elegibilidade */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-blue-500" />
+                      Triagem MCMV
+                    </h3>
+                    {(() => {
+                      if (selectedLead.possuiImovel === true) {
+                        return <Badge variant="outline" className="text-red-600 border-red-400 bg-red-50">🔴 Inabilitado MCMV</Badge>;
+                      }
+                      if (selectedLead.possuiImovel === false && selectedLead.rendaFamiliar) {
+                        return <Badge variant="outline" className="text-green-600 border-green-400 bg-green-50">🟢 Elegível</Badge>;
+                      }
+                      return <Badge variant="outline" className="text-yellow-600 border-yellow-400 bg-yellow-50">🟡 Verificar dados</Badge>;
+                    })()}
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+
+                    {/* Possui imóvel próprio */}
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-1.5">
+                        <Home className="h-3.5 w-3.5 text-muted-foreground" />
+                        Possui imóvel próprio?
+                      </Label>
+                      <div className="flex gap-3 mt-1">
+                        <Button
+                          size="sm"
+                          variant={selectedLead.possuiImovel === true ? "destructive" : "outline"}
+                          onClick={() => {
+                            updateLeadMutation.mutate({ id: selectedLead.id, data: { possuiImovel: true } });
+                            setSelectedLead({ ...selectedLead, possuiImovel: true });
+                          }}
+                        >
+                          Sim
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={selectedLead.possuiImovel === false ? "default" : "outline"}
+                          onClick={() => {
+                            updateLeadMutation.mutate({ id: selectedLead.id, data: { possuiImovel: false } });
+                            setSelectedLead({ ...selectedLead, possuiImovel: false });
+                          }}
+                        >
+                          Não
+                        </Button>
+                      </div>
+                      {selectedLead.possuiImovel === true && (
+                        <p className="text-xs text-red-600 flex items-center gap-1 mt-1">
+                          <AlertCircle className="h-3 w-3" />
+                          Imóvel em nome próprio inabilita o financiamento MCMV
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Nº de dependentes */}
+                    <div className="space-y-2">
+                      <Label htmlFor="numDependentes" className="flex items-center gap-1.5">
+                        <UsersIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                        Nº de dependentes
+                      </Label>
+                      <Input
+                        id="numDependentes"
+                        type="number"
+                        min={0}
+                        max={20}
+                        placeholder="Ex: 2"
+                        value={selectedLead.numDependentes ?? ""}
+                        onChange={(e) => setSelectedLead({ ...selectedLead, numDependentes: e.target.value === "" ? null : parseInt(e.target.value) })}
+                        onBlur={() => updateLeadMutation.mutate({ id: selectedLead.id, data: { numDependentes: selectedLead.numDependentes ?? null } })}
+                      />
+                    </div>
+
+                    {/* Renda familiar total */}
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="rendaFamiliar">Renda familiar total (todos os compradores)</Label>
+                      <Input
+                        id="rendaFamiliar"
+                        placeholder="Ex: R$ 5.200,00 (somando cônjuge e dependentes que compõem renda)"
+                        value={selectedLead.rendaFamiliar || ""}
+                        onChange={(e) => setSelectedLead({ ...selectedLead, rendaFamiliar: e.target.value })}
+                        onBlur={() => updateLeadMutation.mutate({ id: selectedLead.id, data: { rendaFamiliar: selectedLead.rendaFamiliar || null } })}
+                      />
+                    </div>
+
+                    {/* Composição de renda */}
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="composicaoRenda">Composição de renda (quem compõe e quanto)</Label>
+                      <Textarea
+                        id="composicaoRenda"
+                        placeholder="Ex: Titular R$ 3.000 (CLT) + Cônjuge R$ 2.200 (autônoma)"
+                        rows={2}
+                        value={selectedLead.composicaoRenda || ""}
+                        onChange={(e) => setSelectedLead({ ...selectedLead, composicaoRenda: e.target.value })}
+                        onBlur={() => updateLeadMutation.mutate({ id: selectedLead.id, data: { composicaoRenda: selectedLead.composicaoRenda || null } })}
                       />
                     </div>
 

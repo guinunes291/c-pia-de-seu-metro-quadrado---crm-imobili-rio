@@ -205,6 +205,11 @@ export const leadsRouter = router({
         entradaDisponivel: z.string().nullable().optional(),
         dataNascimento: z.date().nullable().optional(),
         cpf: z.string().nullable().optional(),
+        // Triagem MCMV
+        possuiImovel: z.boolean().nullable().optional(),
+        numDependentes: z.number().int().min(0).max(20).nullable().optional(),
+        rendaFamiliar: z.string().max(100).nullable().optional(),
+        composicaoRenda: z.string().nullable().optional(),
       })
     }))
     .mutation(async ({ input, ctx }) => {
