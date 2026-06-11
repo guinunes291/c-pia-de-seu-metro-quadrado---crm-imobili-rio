@@ -169,13 +169,16 @@ async function startServer() {
     });
     
     // Inicializar job de backup para Google Sheets (diário)
-    import("../sheetsBackupJob").then(({ startSheetsBackupJob }) => {
-      startSheetsBackupJob();
-      console.log("[Job] Backup Google Sheets inicializado (diário a cada 24 horas)");
+    // [DESATIVADO] Google Sheets backup — TiDB já tem backup automático (plataforma Manus)
+    // import("../sheetsBackupJob").then(({ startSheetsBackupJob }) => { startSheetsBackupJob(); });
+
+    // Leads frios auto-perdidos (30 dias sem contato → status = perdido)
+    import("../leadsFriosJob").then(({ iniciarLeadsFriosJob }) => {
+      iniciarLeadsFriosJob();
     }).catch(err => {
-      console.error("[Job] Erro ao inicializar job de backup Google Sheets:", err);
+      console.error("[Job] Erro ao inicializar job de leads frios:", err);
     });
-    
+
     // Inicializar job de limpeza de logs (distribution_log, notifications - diário às 3h)
     import("../logCleanupJob").then(({ agendarLimpezaDeLogs }) => {
       agendarLimpezaDeLogs();
