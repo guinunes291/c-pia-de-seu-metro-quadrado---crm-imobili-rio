@@ -277,6 +277,35 @@ export default function Leads() {
       toast.error(`Erro ao atualizar status: ${error.message}`);
     },
   });
+
+  // Modal VGV ao fechar contrato
+  const [vgvDialog, setVgvDialog] = useState(false);
+  const [vgvLeadPendente, setVgvLeadPendente] = useState<{ id: number; nome: string; projectId?: number | null } | null>(null);
+  const [vgvForm, setVgvForm] = useState({ valorVenda: '', unidade: '', projectId: '' });
+  const registrarVendaMutation = trpc.dashboard.registrarVendaDoLead.useMutation({
+    onSuccess: () => {
+      toast.success('Venda registrada! Contrato criado com sucesso.');
+      utils.leads.list.invalidate();
+    },
+    onError: (err) => toast.error(`Erro ao registrar venda: ${err.message}`),
+  });
+  const abrirModalVGV = (lead: { id: number; nome: string; projectId?: number | null }) => {
+    setVgvLeadPendente(lead);
+    setVgvForm({ valorVenda: '', unidade: '', projectId: String(lead.projectId ?? '') });
+    setVgvDialog(true);
+  };
+  const confirmarVGV = async (leadId: number, fecharStatus: () => void) => {
+    const valor = parseFloat(vgvForm.valorVenda.replace(/\./g, '').replace(',', '.'));
+    if (!valor || valor <= 0) { toast.error('Informe o valor da venda'); return; }
+    await registrarVendaMutation.mutateAsync({
+      leadId,
+      valorVenda: valor,
+      unidade: vgvForm.unidade || undefined,
+      projectId: vgvForm.projectId ? parseInt(vgvForm.projectId) : undefined,
+    });
+    setVgvDialog(false);
+    fecharStatus();
+  };
   const { data: leadHistory } = trpc.leads.getHistory.useQuery(
     { leadId: selectedLead?.id || 0 },
     { enabled: !!selectedLead }
@@ -1199,7 +1228,7 @@ export default function Leads() {
                               </Button>
                             )}
                             {lead.status === 'analise_credito' && (
-                              <Button size="sm" onClick={() => handleUpdateStatus(lead.id, 'contrato_fechado')}>
+                              <Button size="sm" onClick={() => { setSelectedLead(lead); abrirModalVGV({ id: lead.id, nome: lead.nome, projectId: lead.projectId }); }}>
                                 <CheckCircle2 className="h-4 w-4 mr-1" /> Fechar Contrato
                               </Button>
                             )}
@@ -1861,8 +1890,7 @@ export default function Leads() {
                             variant="default"
                             size="sm"
                             onClick={() => {
-                              handleUpdateStatus(selectedLead.id, 'contrato_fechado');
-                              setSelectedLead({ ...selectedLead, status: 'contrato_fechado' });
+                              abrirModalVGV({ id: selectedLead.id, nome: selectedLead.nome, projectId: selectedLead.projectId });
                             }}
                           >
                             <CheckCircle2 className="h-4 w-4 mr-1" />
@@ -2625,6 +2653,78 @@ export default function Leads() {
         </Dialog>
 
         {/* Modal de Motivo da Perda - Obrigatório ao marcar como 'perdido' */}
+        {/* Modal VGV — registrar venda ao fechar contrato */}
+        <Dialog open={vgvDialog} onOpenChange={(open) => { if (!open) setVgvDialog(false); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                Registrar Venda
+              </DialogTitle>
+              <DialogDescription>
+                Preencha os dados do contrato para calcular VGV e comissões.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div>
+                <label className="text-sm font-medium">Valor do Imóvel (R$) *</label>
+                <input
+                  className="mt-1 w-full border rounded px-3 py-2 text-sm"
+                  placeholder="Ex: 250.000,00"
+                  value={vgvForm.valorVenda}
+                  onChange={(e) => setVgvForm(f => ({ ...f, valorVenda: e.target.value }))}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Unidade</label>
+                <input
+                  className="mt-1 w-full border rounded px-3 py-2 text-sm"
+                  placeholder="Ex: Apto 102 Bloco B"
+                  value={vgvForm.unidade}
+                  onChange={(e) => setVgvForm(f => ({ ...f, unidade: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Empreendimento</label>
+                <select
+                  className="mt-1 w-full border rounded px-3 py-2 text-sm bg-white"
+                  value={vgvForm.projectId}
+                  onChange={(e) => setVgvForm(f => ({ ...f, projectId: e.target.value }))}
+                >
+                  <option value="">Selecione...</option>
+                  {projects?.map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.nome}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => {
+                setVgvDialog(false);
+                // Fechar contrato sem registrar VGV
+                if (vgvLeadPendente) {
+                  handleUpdateStatus(vgvLeadPendente.id, 'contrato_fechado');
+                  if (selectedLead?.id === vgvLeadPendente.id) setSelectedLead({ ...selectedLead!, status: 'contrato_fechado' });
+                }
+              }}>Pular (sem VGV)</Button>
+              <Button
+                className="bg-emerald-600 hover:bg-emerald-700"
+                disabled={registrarVendaMutation.isPending}
+                onClick={() => {
+                  if (!vgvLeadPendente) return;
+                  confirmarVGV(vgvLeadPendente.id, () => {
+                    handleUpdateStatus(vgvLeadPendente.id, 'contrato_fechado');
+                    if (selectedLead?.id === vgvLeadPendente.id) setSelectedLead({ ...selectedLead!, status: 'contrato_fechado' });
+                  });
+                }}
+              >
+                {registrarVendaMutation.isPending ? 'Salvando...' : 'Confirmar Venda'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={motivoPerdidoDialog} onOpenChange={(open) => {
           if (!open) {
             setMotivoPerdidoDialog(false);

@@ -1574,6 +1574,46 @@ export const appRouter = router({
         return resultado;
       }),
     
+    // Registrar venda ao fechar contrato (corretor próprio lead)
+    registrarVendaDoLead: corretorProcedure
+      .input(z.object({
+        leadId: z.number(),
+        valorVenda: z.number().positive(),
+        unidade: z.string().optional(),
+        projectId: z.number().nullable().optional(),
+        projetoCustom: z.string().optional(),
+        observacoes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const lead = await db.getLeadById(input.leadId);
+        if (!lead) throw new Error('Lead não encontrado');
+        // Verifica se o corretor é dono ou gestor
+        const isGestor = ctx.session.user.role === 'gestor' || ctx.session.user.role === 'admin' || ctx.session.user.role === 'superintendente';
+        if (!isGestor && lead.corretorId !== ctx.session.user.id) {
+          throw new Error('Sem permissão para registrar venda deste lead');
+        }
+        const corretorId = lead.corretorId ?? ctx.session.user.id;
+        const resultado = await db.criarNovoContrato({
+          corretorId,
+          clienteNome: lead.nome ?? '',
+          clienteTelefone: lead.telefone ?? '',
+          clienteEmail: lead.email ?? '',
+          projectId: input.projectId ?? lead.projectId ?? null,
+          projetoCustom: input.projetoCustom ?? lead.projetoCustom ?? '',
+          valorVenda: input.valorVenda,
+          percentualComissao: 3.5,
+          percentualCorretor: 1.85,
+          percentualGerente: 0.5,
+          percentualSuperintendente: 0.3,
+          dataVenda: new Date(),
+          observacoes: input.observacoes,
+        });
+        import('../dreSyncJob').then(({ runDreSync }) => {
+          runDreSync('venda lead').catch(() => {});
+        }).catch(() => {});
+        return resultado;
+      }),
+
     // Opções para selects de edição de contrato
     opcoesContrato: gestorProcedure
       .query(async () => {
