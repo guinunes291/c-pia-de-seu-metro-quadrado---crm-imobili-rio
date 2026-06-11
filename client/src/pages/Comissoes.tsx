@@ -128,6 +128,24 @@ function ComissoesContent() {
     { enabled: isAdmin }
   );
 
+  // Estados para aplicar desconto NF
+  const [dialogDesconto, setDialogDesconto] = useState(false);
+  const [comissaoDescontoId, setComissaoDescontoId] = useState<number | null>(null);
+  const [novoDesconto, setNovoDesconto] = useState('');
+
+  const aplicarDescontoMutation = trpc.comissoes.aplicarDescontoNF.useMutation({
+    onSuccess: () => {
+      utils.comissoes.listar.invalidate();
+      setDialogDesconto(false);
+      setNovoDesconto('');
+      setComissaoDescontoId(null);
+      toast.success('Desconto aplicado com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('Erro ao aplicar desconto: ' + error.message);
+    },
+  });
+
   // Mutation para gerar comissões em lote
   const gerarEmLoteMutation = trpc.comissoes.gerarEmLote.useMutation({
     onSuccess: (data) => {
@@ -856,10 +874,20 @@ function ComissoesContent() {
                       <TableCell className="text-right">{Number(comissao.percentual).toFixed(2)}%</TableCell>
                       <TableCell className="text-right font-semibold">{formatCurrency(Number(comissao.valorComissao))}</TableCell>
                       <TableCell className="text-right text-red-600">
-                        {Number(comissao.percentualDesconto) > 0 ? `-${Number(comissao.percentualDesconto).toFixed(0)}%` : '-'}
+                        {Number(comissao.percentualDesconto) > 0 ? (
+                          <button className="font-medium underline hover:opacity-80" onClick={() => isAdmin ? (setComissaoDescontoId(comissao.id), setNovoDesconto(String(Number(comissao.percentualDesconto).toFixed(2).replace('.', ','))), setDialogDesconto(true)) : undefined}>
+                            -{Number(comissao.percentualDesconto).toFixed(2).replace('.', ',')}%
+                          </button>
+                        ) : (
+                          isAdmin ? (
+                            <button className="text-xs text-muted-foreground underline hover:text-red-600" onClick={() => { setComissaoDescontoId(comissao.id); setNovoDesconto(''); setDialogDesconto(true); }}>
+                              Aplicar
+                            </button>
+                          ) : '-'
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-bold text-green-600">
-                        {formatCurrency(Number(comissao.valorLiquido))}
+                        {formatCurrency(Number(comissao.valorLiquido) || 0)}
                       </TableCell>
                       <TableCell>{getStatusBadge(comissao.status)}</TableCell>
                       <TableCell>{formatDataVenda(comissao.dataVenda)}</TableCell>
@@ -885,6 +913,40 @@ function ComissoesContent() {
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog: Aplicar / Editar Desconto NF */}
+      <Dialog open={dialogDesconto} onOpenChange={(open) => { if (!open) { setDialogDesconto(false); setComissaoDescontoId(null); setNovoDesconto(''); } }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Desconto NF (%)</DialogTitle>
+            <DialogDescription>Informe o percentual de desconto para calcular o valor líquido da comissão.</DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Label>Percentual de desconto</Label>
+            <Input
+              className="mt-1"
+              placeholder="Ex: 27,5"
+              value={novoDesconto}
+              onChange={(e) => setNovoDesconto(e.target.value.replace(/[^\d,]/g, ''))}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogDesconto(false)}>Cancelar</Button>
+            <Button
+              disabled={aplicarDescontoMutation.isPending || !novoDesconto}
+              onClick={() => {
+                if (!comissaoDescontoId) return;
+                const perc = parseFloat(novoDesconto.replace(',', '.'));
+                if (isNaN(perc) || perc < 0 || perc > 100) { toast.error('Percentual inválido (0–100)'); return; }
+                aplicarDescontoMutation.mutate({ id: comissaoDescontoId, percentualDesconto: perc });
+              }}
+            >
+              {aplicarDescontoMutation.isPending ? 'Salvando...' : 'Aplicar Desconto'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
