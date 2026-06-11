@@ -2074,6 +2074,24 @@ export async function notifyLeadDistribuido(corretorId: number, leadId: number, 
   } catch (sseErr) {
     console.warn('[notifyLeadDistribuido] SSE/cache notify falhou (não crítico):', sseErr);
   }
+  // WhatsApp via Z-API — notifica o corretor com link direto para o lead
+  try {
+    const { isZapiConfigured, notificarCorretorNovoLead } = await import('./zapiApi');
+    if (isZapiConfigured()) {
+      const corretorData = await getUserById(corretorId);
+      if (corretorData?.telefone) {
+        const leadData = await getLeadById(leadId);
+        const projetoNome = leadData?.projectId ? (await getProjectById(leadData.projectId))?.nome : null;
+        notificarCorretorNovoLead({
+          corretor: { id: corretorId, nome: corretorData.name, telefone: corretorData.telefone },
+          lead: { id: leadId, nome: leadNome, telefone: leadData?.telefone, origem: leadData?.origem },
+          projetoNome,
+        }).catch((err: unknown) => console.error('[Z-API] Erro ao notificar (distribuicao):', err));
+      }
+    }
+  } catch (zapiErr) {
+    console.error('[Z-API] Erro ao importar zapiApi (distribuicao):', zapiErr);
+  }
   return result;
 }
 // Função para criar notificação quando lead é distribuído
