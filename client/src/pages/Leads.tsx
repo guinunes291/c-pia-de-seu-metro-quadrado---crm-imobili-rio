@@ -1111,6 +1111,29 @@ export default function Leads() {
                           )}
                           {/* Melhoria 6: Follow-up e streak */}
                           <FollowUpBadge lead={lead} />
+                          {/* Alertas visuais: Novo hoje */}
+                          {lead.createdAt && (() => {
+                            const criado = new Date(lead.createdAt);
+                            const hoje = new Date();
+                            const isHoje = criado.getFullYear() === hoje.getFullYear() && criado.getMonth() === hoje.getMonth() && criado.getDate() === hoje.getDate();
+                            return isHoje ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-300">
+                                <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                                Novo hoje
+                              </span>
+                            ) : null;
+                          })()}
+                          {/* Alertas visuais: Sem contato há Xh para quentes */}
+                          {lead.temperatura === 'quente' && lead.ultimaInteracao && (() => {
+                            const horasSem = (Date.now() - new Date(lead.ultimaInteracao).getTime()) / (1000 * 60 * 60);
+                            if (horasSem >= 24) return (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-300">
+                                <Clock className="h-3 w-3" />
+                                🔥 Sem contato {horasSem >= 48 ? `${Math.floor(horasSem / 24)}d` : `${Math.floor(horasSem)}h`}
+                              </span>
+                            );
+                            return null;
+                          })()}
                           {/* Melhoria 5: Campos ADS colapsáveis */}
                           {lead.origemWebhook && (lead.campanha || lead.faixaRenda || lead.prefereContatoPor || lead.finalidadeImovel) && (
                             <div>
