@@ -1615,6 +1615,8 @@ export default function Leads() {
                     {addInteractionMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                   </Button>
                 </div>
+                {/* Próxima ação sugerida pela IA — on-demand */}
+                <ProximaAcaoIACard leadId={selectedLead.id} />
                 {/* Informações básicas */}
                 <div>
                   <h3 className="font-semibold mb-3">Informações de Contato</h3>
@@ -2905,6 +2907,70 @@ export default function Leads() {
         </AlertDialogContent>
       </AlertDialog>
     </DashboardLayout>
+  );
+}
+
+function ProximaAcaoIACard({ leadId }: { leadId: number }) {
+  const [gerar, setGerar] = useState(false);
+  const acaoQuery = trpc.ia.sugestaoProximaAcao.useQuery({ leadId }, { enabled: gerar, staleTime: 60 * 60_000 });
+
+  const URGENCIA_BADGE: Record<string, string> = {
+    imediata: "bg-red-100 text-red-700 border-red-300",
+    hoje: "bg-orange-100 text-orange-700 border-orange-300",
+    essa_semana: "bg-yellow-100 text-yellow-700 border-yellow-300",
+  };
+
+  return (
+    <div className="rounded-lg border border-violet-200 bg-gradient-to-br from-violet-50/60 to-fuchsia-50/40 dark:from-violet-950/20 dark:to-fuchsia-950/10 dark:border-violet-900 p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold flex items-center gap-1.5">
+          <Sparkles className="h-4 w-4 text-violet-500" />
+          Próxima ação (IA)
+        </p>
+        {!gerar && (
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setGerar(true)}>
+            Gerar sugestão
+          </Button>
+        )}
+        {gerar && acaoQuery.data && (
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => acaoQuery.refetch()}>
+            <RefreshCw className={`h-3 w-3 mr-1 ${acaoQuery.isFetching ? 'animate-spin' : ''}`} /> Atualizar
+          </Button>
+        )}
+      </div>
+      {gerar && acaoQuery.isLoading && (
+        <p className="text-xs text-muted-foreground animate-pulse mt-2">Analisando histórico do lead...</p>
+      )}
+      {gerar && acaoQuery.error && (
+        <p className="text-xs text-red-500 mt-2">{acaoQuery.error.message}</p>
+      )}
+      {gerar && acaoQuery.data && (
+        <div className="mt-2 space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium">{acaoQuery.data.acao}</span>
+            <Badge variant="outline" className="text-xs">{acaoQuery.data.canal}</Badge>
+            <Badge variant="outline" className={`text-xs ${URGENCIA_BADGE[acaoQuery.data.urgencia] || ''}`}>
+              {acaoQuery.data.urgencia?.replace('_', ' ')}
+            </Badge>
+          </div>
+          {acaoQuery.data.script && (
+            <div className="bg-white/70 dark:bg-black/20 rounded-md p-2 text-xs whitespace-pre-wrap relative group">
+              {acaoQuery.data.script}
+              <button
+                className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
+                onClick={() => { navigator.clipboard.writeText(acaoQuery.data.script); toast.success('Script copiado!'); }}
+                title="Copiar script"
+              >
+                <Copy className="h-3 w-3" />
+              </button>
+            </div>
+          )}
+          {acaoQuery.data.justificativa && (
+            <p className="text-xs text-muted-foreground italic">{acaoQuery.data.justificativa}</p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
