@@ -12415,3 +12415,66 @@ export async function buscarProjetoPorNome(nomeEmpreendimento: string): Promise<
     .limit(1);
   return parcial.length > 0 ? parcial[0] : null;
 }
+
+export async function getMotivosPerda(options?: {
+  dataInicio?: string;
+  dataFim?: string;
+  corretorId?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const conditions = [sql`${leads.status} = 'perdido'`];
+
+  if (options?.dataInicio) {
+    conditions.push(sql`${leads.updatedAt} >= ${new Date(options.dataInicio)}`);
+  }
+  if (options?.dataFim) {
+    const fim = new Date(options.dataFim);
+    fim.setHours(23, 59, 59, 999);
+    conditions.push(sql`${leads.updatedAt} <= ${fim}`);
+  }
+  if (options?.corretorId) {
+    conditions.push(eq(leads.corretorId, options.corretorId));
+  }
+
+  const total = await db
+    .select({ count: sql<number>`COUNT(*)`.as('count') })
+    .from(leads)
+    .where(and(...conditions));
+
+  const totalCount = Number(total[0]?.count || 0);
+
+  const rows = await db
+    .select({
+      categoria: leads.motivoPerdaCategoria,
+      quantidade: sql<number>`COUNT(*)`.as('quantidade'),
+    })
+    .from(leads)
+    .where(and(...conditions))
+    .groupBy(leads.motivoPerdaCategoria)
+    .orderBy(sql`COUNT(*) DESC`);
+
+  const labels: Record<string, string> = {
+    sem_interesse: 'Sem Interesse',
+    sem_credito: 'Sem Crédito / Não Aprovado',
+    comprou_concorrente: 'Comprou com Concorrente',
+    preco_alto: 'Preço Muito Alto',
+    localizacao: 'Localização Não Atende',
+    nao_atende: 'Não Atende / Não Responde',
+    desistiu: 'Desistiu da Compra',
+    mudou_planos: 'Mudou de Planos',
+    sem_entrada: 'Sem Entrada / Sem Recurso Próprio',
+    imovel_proprio: 'Possui Imóvel Próprio (inabilita MCMV)',
+    renda_insuficiente: 'Renda Insuficiente',
+    banco_reprovou: 'Banco Reprovou',
+    outro: 'Outro Motivo',
+  };
+
+  return rows.map(r => ({
+    categoria: r.categoria || 'sem_categoria',
+    label: labels[r.categoria || ''] || r.categoria || 'Não informado',
+    quantidade: Number(r.quantidade),
+    percentual: totalCount > 0 ? Math.round((Number(r.quantidade) / totalCount) * 100) : 0,
+  }));
+}

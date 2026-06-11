@@ -135,4 +135,15 @@ export const analyticsRouter = router({
       .query(async () => {
         return await db.getPrevisaoVendas();
       }),
+
+    // Ranking de Motivos de Perda
+    motivosPerda: gestorProcedure
+      .input(z.object({
+        dataInicio: z.string().optional(),
+        dataFim: z.string().optional(),
+        corretorId: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return await db.getMotivosPerda(input);
+      }),
 });

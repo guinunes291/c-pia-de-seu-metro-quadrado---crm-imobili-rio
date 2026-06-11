@@ -2517,6 +2517,9 @@ export default function Leads() {
                     <SelectItem value="desistiu">Desistiu da Compra</SelectItem>
                     <SelectItem value="mudou_planos">Mudou de Planos</SelectItem>
                     <SelectItem value="sem_entrada">Sem Entrada / Sem Recurso Próprio</SelectItem>
+                    <SelectItem value="imovel_proprio">Possui Imóvel Próprio (inabilita MCMV)</SelectItem>
+                    <SelectItem value="renda_insuficiente">Renda Insuficiente</SelectItem>
+                    <SelectItem value="banco_reprovou">Banco Reprovou</SelectItem>
                     <SelectItem value="outro">Outro Motivo</SelectItem>
                   </SelectContent>
                 </Select>

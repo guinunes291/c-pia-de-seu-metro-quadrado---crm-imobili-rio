@@ -13,7 +13,7 @@ import {
   BarChart3, TrendingUp, TrendingDown, Users, Target, AlertTriangle,
   CalendarX, ArrowRight, ChevronDown, ChevronUp, Filter,
   Building2, Layers, PieChart, Activity, Zap, CheckCircle2, XCircle, CalendarCheck,
-  Settings2
+  Settings2, ThumbsDown
 } from "lucide-react";
 import { CustomReportBuilder } from "@/components/CustomReportBuilder";
 
@@ -165,6 +165,10 @@ export default function Relatorios() {
     agrupamento: periodo === "ano" || periodo === "semestre" ? "mes" : periodo === "trimestre" ? "semana" : "dia",
   });
   const origens = trpc.centralAnalises.origensConversao.useQuery(inputDatas, { enabled: abaAtiva === 'origens' });
+  const motivosPerda = trpc.analytics.motivosPerda.useQuery({
+    dataInicio: inputDatas.dataInicio,
+    dataFim: inputDatas.dataFim,
+  }, { enabled: abaAtiva === 'motivos_perda' });
 
   const inputDatasAnterior = useMemo(() => {
     const duracaoMs = datas.dataFim.getTime() - datas.dataInicio.getTime() + 1;
@@ -272,6 +276,9 @@ export default function Relatorios() {
             <TabsTrigger value="show_rate" className="gap-1.5 text-xs sm:text-sm">
               <CalendarCheck className="h-3.5 w-3.5" /> Show Rate
             </TabsTrigger>
+            <TabsTrigger value="motivos_perda" className="gap-1.5 text-xs sm:text-sm">
+              <ThumbsDown className="h-3.5 w-3.5" /> Motivos de Perda
+            </TabsTrigger>
             <TabsTrigger value="personalizado" className="gap-1.5 text-xs sm:text-sm">
               <Settings2 className="h-3.5 w-3.5" /> Personalizado
             </TabsTrigger>
@@ -307,6 +314,10 @@ export default function Relatorios() {
 
           <TabsContent value="show_rate" className="mt-4">
             <AbaShowRate data={showRate.data} isLoading={showRate.isLoading} />
+          </TabsContent>
+
+          <TabsContent value="motivos_perda" className="mt-4">
+            <AbaMotivosPerda data={motivosPerda.data} isLoading={motivosPerda.isLoading} />
           </TabsContent>
 
           <TabsContent value="personalizado" className="mt-4">
@@ -1384,6 +1395,90 @@ function AbaShowRate({ data, isLoading }: { data: any[] | undefined; isLoading: 
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ============================================================================
+// ABA MOTIVOS DE PERDA
+// ============================================================================
+function AbaMotivosPerda({ data, isLoading }: { data?: Array<{ categoria: string; label: string; quantidade: number; percentual: number }>; isLoading: boolean }) {
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+      </div>
+    );
+  }
+
+  if (!data || data.length === 0) {
+    return (
+      <Card>
+        <CardContent className="pt-8 pb-8 text-center text-muted-foreground">
+          <ThumbsDown className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p className="font-medium">Nenhum lead perdido no período</p>
+          <p className="text-sm mt-1">Ajuste o filtro de datas para ver o histórico de perdas.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const total = data.reduce((acc, r) => acc + r.quantidade, 0);
+  const semMotivo = data.find(r => r.categoria === 'sem_categoria');
+  const comMotivo = data.filter(r => r.categoria !== 'sem_categoria');
+  const COLORS = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-blue-500', 'bg-purple-500', 'bg-pink-500', 'bg-teal-500', 'bg-indigo-500'];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Card><CardContent className="pt-4 pb-4"><p className="text-xs text-muted-foreground">Total Perdidos</p><p className="text-2xl font-bold text-red-600">{total}</p></CardContent></Card>
+        <Card><CardContent className="pt-4 pb-4"><p className="text-xs text-muted-foreground">Com motivo</p><p className="text-2xl font-bold text-green-600">{total - (semMotivo?.quantidade || 0)}</p></CardContent></Card>
+        <Card><CardContent className="pt-4 pb-4"><p className="text-xs text-muted-foreground">Sem motivo</p><p className="text-2xl font-bold text-yellow-600">{semMotivo?.quantidade || 0}</p></CardContent></Card>
+        <Card><CardContent className="pt-4 pb-4"><p className="text-xs text-muted-foreground">% preenchimento</p><p className="text-2xl font-bold">{total > 0 ? Math.round(((total - (semMotivo?.quantidade || 0)) / total) * 100) : 0}%</p></CardContent></Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ThumbsDown className="h-4 w-4 text-red-500" />
+            Ranking de Motivos de Perda
+          </CardTitle>
+          <CardDescription>Por que os leads estão sendo perdidos no período selecionado</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {comMotivo.map((row, idx) => (
+              <div key={row.categoria} className="space-y-1">
+                <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-muted-foreground w-5">#{idx + 1}</span>
+                    <span className="font-medium">{row.label}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-muted-foreground text-xs">{row.quantidade} leads</span>
+                    <Badge variant="outline" className="font-semibold">{row.percentual}%</Badge>
+                  </div>
+                </div>
+                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${COLORS[idx % COLORS.length]}`} style={{ width: `${row.percentual}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {semMotivo && semMotivo.quantidade > 0 && (
+        <Card className="border-yellow-200 bg-yellow-50/50 dark:bg-yellow-950/10">
+          <CardContent className="pt-4 pb-4 flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-yellow-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium text-yellow-800 dark:text-yellow-400">{semMotivo.quantidade} leads perdidos sem motivo registrado</p>
+              <p className="text-sm text-yellow-700 dark:text-yellow-500 mt-0.5">Reforce com os corretores que o motivo de perda é obrigatório. Dados incompletos prejudicam a análise gerencial.</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
