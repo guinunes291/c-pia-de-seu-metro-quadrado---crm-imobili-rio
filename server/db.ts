@@ -12478,3 +12478,55 @@ export async function getMotivosPerda(options?: {
     percentual: totalCount > 0 ? Math.round((Number(r.quantidade) / totalCount) * 100) : 0,
   }));
 }
+
+export async function getVisaoExecutivaHoje() {
+  const db = await getDb();
+  if (!db) return null;
+
+  const [recebidos, atendidos, slaMedio, vgvMes, contratosMes] = await Promise.all([
+    // Leads recebidos hoje
+    db.select({ count: sql<number>`COUNT(*)`.as('count') })
+      .from(leads)
+      .where(sql`DATE(${leads.createdAt}) = CURDATE()`),
+    // Leads de hoje que já foram atendidos (1º contato feito)
+    db.select({ count: sql<number>`COUNT(*)`.as('count') })
+      .from(leads)
+      .where(and(
+        sql`DATE(${leads.createdAt}) = CURDATE()`,
+        isNotNull(leads.primeiroContatoEm),
+      )),
+    // Tempo médio do 1º contato (min) para leads de hoje
+    db.select({ media: sql<number>`AVG(${leads.tempoAtePrimeiroContato})`.as('media') })
+      .from(leads)
+      .where(and(
+        sql`DATE(${leads.createdAt}) = CURDATE()`,
+        isNotNull(leads.tempoAtePrimeiroContato),
+      )),
+    // VGV do mês corrente (contratos ativos, sem distrato)
+    db.select({ total: sql<number>`COALESCE(SUM(${contratos.valorVenda}), 0)`.as('total') })
+      .from(contratos)
+      .where(and(
+        eq(contratos.distrato, false),
+        sql`YEAR(${contratos.createdAt}) = YEAR(CURDATE()) AND MONTH(${contratos.createdAt}) = MONTH(CURDATE())`,
+      )),
+    // Contratos fechados no mês
+    db.select({ count: sql<number>`COUNT(*)`.as('count') })
+      .from(contratos)
+      .where(and(
+        eq(contratos.distrato, false),
+        sql`YEAR(${contratos.createdAt}) = YEAR(CURDATE()) AND MONTH(${contratos.createdAt}) = MONTH(CURDATE())`,
+      )),
+  ]);
+
+  const recebidosHoje = Number(recebidos[0]?.count || 0);
+  const atendidosHoje = Number(atendidos[0]?.count || 0);
+
+  return {
+    leadsRecebidosHoje: recebidosHoje,
+    leadsAtendidosHoje: atendidosHoje,
+    percentualAtendimento: recebidosHoje > 0 ? Math.round((atendidosHoje / recebidosHoje) * 100) : null,
+    tempoMedioPrimeiroContatoMin: slaMedio[0]?.media != null ? Math.round(Number(slaMedio[0].media)) : null,
+    vgvMes: Number(vgvMes[0]?.total || 0),
+    contratosMes: Number(contratosMes[0]?.count || 0),
+  };
+}

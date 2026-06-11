@@ -1590,6 +1590,16 @@ export const appRouter = router({
       }),
     
     // VGV agrupado por equipe e projeto
+    // Visão executiva instantânea (CEO) — leads de hoje + VGV do mês
+    visaoExecutivaHoje: gestorProcedure
+      .query(async () => {
+        return await cacheGetOrSet(
+          'dashboard.visaoExecutivaHoje',
+          CACHE_TTL.SHORT,
+          () => db.getVisaoExecutivaHoje(),
+        );
+      }),
+
     vgvPorEquipeProjeto: gestorProcedure
       .input(z.object({
         dataInicio: z.string().optional(),

@@ -290,6 +290,12 @@ export default function Dashboard() {
     refetchInterval: 2 * 60 * 1000,
   });
 
+  // Visão executiva instantânea (hoje + VGV do mês)
+  const { data: visaoHoje } = trpc.dashboard.visaoExecutivaHoje.useQuery(undefined, {
+    ...gestorBase,
+    refetchInterval: 60 * 1000,
+  });
+
   // ── Tier 1: KPIs principais (carregam imediatamente) ─────────────────────
   const { data: metrics, isLoading: metricsLoading } = trpc.dashboard.metrics.useQuery(dateFilter, gestorBase);
 
@@ -775,6 +781,58 @@ export default function Dashboard() {
             </Button>
           )}
         </div>
+
+        {/* Bloco: Visão Executiva — Hoje (CEO/gestor) */}
+        {isGestor && visaoHoje && (
+          <div className="mb-6">
+            <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
+              <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-sky-50 dark:from-blue-950 dark:to-sky-950 dark:border-blue-800">
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Leads recebidos hoje</p>
+                  <p className="text-2xl font-bold text-blue-800 dark:text-blue-200">{visaoHoje.leadsRecebidosHoje}</p>
+                </CardContent>
+              </Card>
+              <Card className={`${visaoHoje.percentualAtendimento != null && visaoHoje.percentualAtendimento < 70 ? 'border-red-200 bg-red-50/50 dark:bg-red-950/20' : 'border-green-200 bg-green-50/50 dark:bg-green-950/20'}`}>
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs font-medium text-muted-foreground">Atendidos hoje</p>
+                  <p className="text-2xl font-bold">
+                    {visaoHoje.leadsAtendidosHoje}
+                    {visaoHoje.percentualAtendimento != null && (
+                      <span className={`text-sm font-semibold ml-1.5 ${visaoHoje.percentualAtendimento < 70 ? 'text-red-600' : 'text-green-600'}`}>
+                        ({visaoHoje.percentualAtendimento}%)
+                      </span>
+                    )}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className={`${visaoHoje.tempoMedioPrimeiroContatoMin != null && visaoHoje.tempoMedioPrimeiroContatoMin > 5 ? 'border-orange-200 bg-orange-50/50 dark:bg-orange-950/20' : 'border-green-200 bg-green-50/50 dark:bg-green-950/20'}`}>
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs font-medium text-muted-foreground">Tempo médio 1º contato</p>
+                  <p className="text-2xl font-bold">
+                    {visaoHoje.tempoMedioPrimeiroContatoMin != null ? (
+                      <>
+                        {visaoHoje.tempoMedioPrimeiroContatoMin} min
+                        <span className="text-xs font-normal text-muted-foreground ml-1.5">(meta 5)</span>
+                      </>
+                    ) : '—'}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950 dark:to-green-950 dark:border-emerald-800">
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">VGV do mês</p>
+                  <p className="text-xl font-bold text-emerald-800 dark:text-emerald-200">{formatCurrency(visaoHoje.vgvMes)}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs font-medium text-muted-foreground">Contratos no mês</p>
+                  <p className="text-2xl font-bold">{visaoHoje.contratosMes}</p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
 
         {/* Bloco: Situação Agora — alertas da equipe em tempo real */}
         {alertasEquipe && (
