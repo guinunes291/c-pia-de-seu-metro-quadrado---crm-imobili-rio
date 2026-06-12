@@ -1565,9 +1565,13 @@ export const appRouter = router({
           ...input,
           dataVenda: new Date(input.dataVenda),
         });
+        // Invalidar cache do dashboard imediatamente (não aguardar TTL de 60s)
+        import('./_core/cache').then(({ cacheInvalidate }) => {
+          cacheInvalidate('dashboard.').catch(() => {});
+        }).catch(() => {});
         // Sincronizar com planilha DRE em background (sem bloquear a resposta)
         import('../dreSyncJob').then(({ runDreSync }) => {
-          runDreSync('novo contrato').catch(err => 
+          runDreSync('novo contrato').catch(err =>
             console.error('[DRE Sync] Erro ao sincronizar após criar contrato:', err)
           );
         }).catch((err: unknown) => console.error('[DRE Sync] Erro ao importar dreSyncJob (criar contrato):', err));
@@ -1608,6 +1612,10 @@ export const appRouter = router({
           dataVenda: new Date(),
           observacoes: input.observacoes,
         });
+        // Invalidar cache do dashboard imediatamente
+        import('./_core/cache').then(({ cacheInvalidate }) => {
+          cacheInvalidate('dashboard.').catch(() => {});
+        }).catch(() => {});
         import('../dreSyncJob').then(({ runDreSync }) => {
           runDreSync('venda lead').catch(() => {});
         }).catch(() => {});

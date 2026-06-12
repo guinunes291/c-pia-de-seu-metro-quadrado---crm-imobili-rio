@@ -339,9 +339,11 @@ export default function Dashboard() {
   // ── Tier 3.5: Motivos de perda ────────────────────────────────────────────
   const { data: motivosPerda } = trpc.dashboard.motivosPerda.useQuery(undefined, tier3);
 
+  // contratosFechados sobe para Tier 2 — gestores precisam ver vendas rapidamente
+  const { data: contratosFechados } = trpc.dashboard.contratosFechados.useQuery(dateFilter, tier2);
+
   // ── Tier 4: Tabelas detalhadas (geralmente abaixo da dobra) ──────────────
   const { data: relatorioLeadsCriados } = trpc.dashboard.relatorioLeadsCriados.useQuery(dateFilter, tier4);
-  const { data: contratosFechados } = trpc.dashboard.contratosFechados.useQuery(dateFilter, tier4);
   const { data: vgvPorEquipeProjeto } = trpc.dashboard.vgvPorEquipeProjeto.useQuery(dateFilter, tier4);
 
   const forceSyncMutation = trpc.ranking.forceSyncMetricas.useMutation({
@@ -1006,7 +1008,14 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center justify-between">
-                    <div className="text-2xl font-bold">{metrics?.visitaRealizada || 0}</div>
+                    <div>
+                      <div className="text-2xl font-bold">{metrics?.visitaRealizada || 0}</div>
+                      {(metrics?.total ?? 0) > 0 && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {((( metrics!.visitaRealizada || 0) / metrics!.total) * 100).toFixed(1)}% do total
+                        </p>
+                      )}
+                    </div>
                     {isAdminExport && (metrics?.visitaRealizada || 0) > 0 && (
                       <ExportCSVButton status="visita_realizada" size="icon" variant="ghost" label="" />
                     )}
@@ -1023,7 +1032,14 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center justify-between">
-                    <div className="text-2xl font-bold">{metrics?.analiseCredito || 0}</div>
+                    <div>
+                      <div className="text-2xl font-bold">{metrics?.analiseCredito || 0}</div>
+                      {(metrics?.total ?? 0) > 0 && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {(((metrics!.analiseCredito || 0) / metrics!.total) * 100).toFixed(1)}% do total
+                        </p>
+                      )}
+                    </div>
                     {isAdminExport && (metrics?.analiseCredito || 0) > 0 && (
                       <ExportCSVButton status="analise_credito" size="icon" variant="ghost" label="" />
                     )}
@@ -1038,7 +1054,14 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center justify-between">
-                    <div className="text-2xl font-bold">{metrics?.contratoFechado || 0}</div>
+                    <div>
+                      <div className="text-2xl font-bold">{metrics?.contratoFechado || 0}</div>
+                      {(metrics?.total ?? 0) > 0 && (
+                        <p className="text-xs text-green-600 dark:text-green-400 font-medium mt-0.5">
+                          {(((metrics!.contratoFechado || 0) / metrics!.total) * 100).toFixed(2)}% conversão
+                        </p>
+                      )}
+                    </div>
                     {isAdminExport && (metrics?.contratoFechado || 0) > 0 && (
                       <ExportCSVButton status="contrato_fechado" size="icon" variant="ghost" label="" />
                     )}
@@ -1053,7 +1076,14 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center justify-between">
-                    <div className="text-2xl font-bold">{metrics?.perdido || 0}</div>
+                    <div>
+                      <div className="text-2xl font-bold">{metrics?.perdido || 0}</div>
+                      {(metrics?.total ?? 0) > 0 && (
+                        <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">
+                          {(((metrics!.perdido || 0) / metrics!.total) * 100).toFixed(1)}% do total
+                        </p>
+                      )}
+                    </div>
                     {isAdminExport && (metrics?.perdido || 0) > 0 && (
                       <ExportCSVButton status="perdido" size="icon" variant="ghost" label="" />
                     )}
@@ -1070,6 +1100,11 @@ export default function Dashboard() {
                   <div className="text-2xl font-bold text-green-700 dark:text-green-300">
                     {formatCurrency(metrics?.vgv || 0)}
                   </div>
+                  {(metrics?.contratoFechado ?? 0) > 0 && (
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
+                      média {formatCurrency((metrics!.vgv || 0) / metrics!.contratoFechado)} / contrato
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             </div>

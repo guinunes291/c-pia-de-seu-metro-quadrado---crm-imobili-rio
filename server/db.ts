@@ -2159,12 +2159,13 @@ export async function getDashboardMetrics(filtros?: DashboardFilters) {
       dateLeadConditions.push(sql`1 = 0`);
     } else {
       dateLeadConditions.push(inArray(leads.corretorId, filtros.corretoresIds));
-      // Para tabelas relacionadas, filtrar via JOIN com leads
-      const corretorFilter = inArray(leads.corretorId, filtros.corretoresIds);
-      dateOtherConditions.agend.push(corretorFilter);
-      dateOtherConditions.visit.push(corretorFilter);
-      dateOtherConditions.analise.push(corretorFilter);
-      dateOtherConditions.contrato.push(corretorFilter);
+      // Para agendamentos/visitas/análises filtrar via JOIN com leads
+      const corretorFilterLead = inArray(leads.corretorId, filtros.corretoresIds);
+      dateOtherConditions.agend.push(corretorFilterLead);
+      dateOtherConditions.visit.push(corretorFilterLead);
+      dateOtherConditions.analise.push(corretorFilterLead);
+      // Para contratos: filtrar por contratos.corretorId diretamente (mais confiável)
+      dateOtherConditions.contrato.push(inArray(contratos.corretorId, filtros.corretoresIds));
     }
   }
   
@@ -2196,20 +2197,23 @@ export async function getDashboardMetrics(filtros?: DashboardFilters) {
     .leftJoin(leads, eq(analises_credito.leadId, leads.id))
     .where(dateOtherConditions.analise.length > 0 ? and(...dateOtherConditions.analise) : undefined);
   
+  // contratoQuery e vgvQuery: filtrar por contratos.corretorId diretamente (sem LEFT JOIN),
+  // pois criarNovoContrato sempre seta contratos.corretorId corretamente.
+  // Ambas excluem distratos (distrato = 0).
+  const contratoBaseConditions = [
+    sql`${contratos.distrato} = 0`,
+    ...dateOtherConditions.contrato,
+  ];
+
   const contratoQuery = db.select({ count: sql<number>`COUNT(DISTINCT ${contratos.id})` })
     .from(contratos)
-    .leftJoin(leads, eq(contratos.leadId, leads.id))
-    .where(dateOtherConditions.contrato.length > 0 ? and(...dateOtherConditions.contrato) : undefined);
-  
-  const vgvQuery = db.select({ 
-    total: sql<number>`COALESCE(SUM(${contratos.valorVenda}), 0)` 
+    .where(and(...contratoBaseConditions));
+
+  const vgvQuery = db.select({
+    total: sql<number>`COALESCE(SUM(${contratos.valorVenda}), 0)`,
   })
     .from(contratos)
-    .leftJoin(leads, eq(contratos.leadId, leads.id))
-    .where(and(
-      sql`${contratos.distrato} = 0`, // Excluir distratos do VGV
-      ...(dateOtherConditions.contrato.length > 0 ? dateOtherConditions.contrato : [])
-    ));
+    .where(and(...contratoBaseConditions));
   
   // Executar em paralelo com allSettled para isolar falhas individuais
   const queryNames = ['leadsCountsQuery', 'agendQuery', 'visitQuery', 'analiseQuery', 'contratoQuery', 'vgvQuery'];
