@@ -242,6 +242,7 @@ export default function Dashboard() {
   // Estado do filtro
   const [filterPreset, setFilterPreset] = useState("all");
   const [ocultarSemCorretor, setOcultarSemCorretor] = useState(true);
+  const [analiseExpandida, setAnaliseExpandida] = useState(false);
   const [customDateRange, setCustomDateRange] = useState<{
     from: Date | undefined;
     to: Date | undefined;
@@ -701,50 +702,39 @@ export default function Dashboard() {
     <DashboardLayout>
       <div className="container py-8">
         {/* Header com filtro */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Dashboard do Gestor</h1>
-            <p className="text-muted-foreground mt-2">
-              Visão geral do desempenho da equipe
-            </p>
+            <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Visão gerencial da equipe de vendas</p>
           </div>
-          
-          {/* Filtro de data */}
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Filtro de data */}
             <Select value={filterPreset} onValueChange={setFilterPreset}>
-              <SelectTrigger className="w-[180px]">
-                <CalendarDays className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Selecione o período" />
+              <SelectTrigger className="w-[160px] h-8 text-sm">
+                <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
+                <SelectValue placeholder="Período" />
               </SelectTrigger>
               <SelectContent>
                 {FILTER_PRESETS.map((preset) => (
-                  <SelectItem key={preset.value} value={preset.value}>
-                    {preset.label}
-                  </SelectItem>
+                  <SelectItem key={preset.value} value={preset.value}>{preset.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            
+
             {filterPreset === "custom" && (
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-[240px] justify-start text-left font-normal">
-                    <CalendarRange className="mr-2 h-4 w-4" />
+                  <Button variant="outline" size="sm" className="h-8 text-sm">
+                    <CalendarRange className="mr-1.5 h-3.5 w-3.5" />
                     {customDateRange.from ? (
-                      customDateRange.to ? (
-                        <>
-                          {format(customDateRange.from, "dd/MM/yy", { locale: ptBR })} -{" "}
-                          {format(customDateRange.to, "dd/MM/yy", { locale: ptBR })}
-                        </>
-                      ) : (
-                        format(customDateRange.from, "dd/MM/yyyy", { locale: ptBR })
-                      )
-                    ) : (
-                      <span>Selecione as datas</span>
-                    )}
+                      customDateRange.to
+                        ? `${format(customDateRange.from, "dd/MM/yy", { locale: ptBR })} – ${format(customDateRange.to, "dd/MM/yy", { locale: ptBR })}`
+                        : format(customDateRange.from, "dd/MM/yyyy", { locale: ptBR })
+                    ) : "Datas"}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                <PopoverContent className="w-auto p-0" align="end">
                   <CalendarComponent
                     initialFocus
                     mode="range"
@@ -757,31 +747,32 @@ export default function Dashboard() {
                 </PopoverContent>
               </Popover>
             )}
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => forceSyncMutation.mutate()}
-            disabled={forceSyncMutation.isPending}
-            title="Forçar ressincronização das métricas do Ranking TV"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${forceSyncMutation.isPending ? 'animate-spin' : ''}`} />
-            {forceSyncMutation.isPending ? 'Sincronizando...' : 'Sincronizar Métricas'}
-          </Button>
-          {isAdminExport && (
+
+            {/* Sincronizar — ícone compacto */}
             <Button
               variant="ghost"
-              size="sm"
-              className="text-xs text-muted-foreground"
-              onClick={async () => {
-                const result = await diagQuery.refetch();
-                alert(JSON.stringify(result.data, null, 2));
-              }}
-              title="Diagnóstico do banco de dados — apenas admin"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => forceSyncMutation.mutate()}
+              disabled={forceSyncMutation.isPending}
+              title="Ressincronizar métricas do Ranking TV"
             >
-              [ADMIN] Diagnóstico DB
+              <RefreshCw className={`h-3.5 w-3.5 ${forceSyncMutation.isPending ? 'animate-spin' : ''}`} />
             </Button>
-          )}
+
+            {/* Admin — diagnóstico oculto em hover */}
+            {isAdminExport && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground/40 hover:text-muted-foreground"
+                onClick={async () => { const r = await diagQuery.refetch(); alert(JSON.stringify(r.data, null, 2)); }}
+                title="[Admin] Diagnóstico DB"
+              >
+                <AlertCircle className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Bloco: Visão Executiva — Hoje (CEO/gestor) */}
@@ -934,221 +925,92 @@ export default function Dashboard() {
         )}
 
         {metricsLoading ? (
-          <div className="text-center py-8 text-muted-foreground">
-            Carregando métricas...
+          <div className="grid gap-3 grid-cols-4 md:grid-cols-8 mb-6">
+            {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
           </div>
         ) : (
           <>
-            {/* Cards de métricas por status */}
-            <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5 mb-8">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total de Leads</CardTitle>
-                  <Users className="h-4 w-4 text-blue-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div className="text-2xl font-bold">{metrics?.total || 0}</div>
-                    {isAdminExport && (metrics?.total || 0) > 0 && (
-                      <ExportCSVButton size="icon" variant="ghost" label="" />
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Aguardando</CardTitle>
-                  <Hourglass className="h-4 w-4 text-slate-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div className="text-2xl font-bold">{metrics?.aguardando || 0}</div>
-                    {isAdminExport && (metrics?.aguardando || 0) > 0 && (
-                      <ExportCSVButton status="aguardando_atendimento" size="icon" variant="ghost" label="" />
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Em Atendimento</CardTitle>
-                  <Clock className="h-4 w-4 text-yellow-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div className="text-2xl font-bold">{metrics?.emAtendimento || 0}</div>
-                    {isAdminExport && (metrics?.emAtendimento || 0) > 0 && (
-                      <ExportCSVButton status="em_atendimento" size="icon" variant="ghost" label="" />
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Agendado</CardTitle>
-                  <Calendar className="h-4 w-4 text-cyan-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div className="text-2xl font-bold">{metrics?.agendado || 0}</div>
-                    {isAdminExport && (metrics?.agendado || 0) > 0 && (
-                      <ExportCSVButton status="agendado" size="icon" variant="ghost" label="" />
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Visita Realizada</CardTitle>
-                  <Eye className="h-4 w-4 text-orange-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-2xl font-bold">{metrics?.visitaRealizada || 0}</div>
-                      {(metrics?.total ?? 0) > 0 && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {((( metrics!.visitaRealizada || 0) / metrics!.total) * 100).toFixed(1)}% do total
-                        </p>
+            {/* Funil de fases — 8 cards em linha única */}
+            <div className="grid gap-2 grid-cols-4 md:grid-cols-8 mb-6">
+              {[
+                { label: "Total", value: metrics?.total, icon: Users, color: "text-blue-500", status: undefined, exportAll: true },
+                { label: "Aguardando", value: metrics?.aguardando, icon: Hourglass, color: "text-slate-400", status: "aguardando_atendimento" },
+                { label: "Atendimento", value: metrics?.emAtendimento, icon: Clock, color: "text-yellow-500", status: "em_atendimento" },
+                { label: "Agendado", value: metrics?.agendado, icon: Calendar, color: "text-cyan-500", status: "agendado" },
+                { label: "Visita", value: metrics?.visitaRealizada, icon: Eye, color: "text-orange-500", status: "visita_realizada" },
+                { label: "Análise", value: metrics?.analiseCredito, icon: FileCheck, color: "text-purple-500", status: "analise_credito" },
+                { label: "Contrato", value: metrics?.contratoFechado, icon: CheckCircle, color: "text-green-600", status: "contrato_fechado", highlight: true },
+                { label: "Perdidos", value: metrics?.perdido, icon: XCircle, color: "text-red-500", status: "perdido" },
+              ].map(({ label, value, icon: Icon, color, status, exportAll, highlight }) => (
+                <Card
+                  key={label}
+                  className={`cursor-pointer hover:shadow-md transition-all hover:scale-[1.02] ${highlight ? 'border-green-200 bg-green-50/60 dark:bg-green-950/20 dark:border-green-800' : ''}`}
+                  onClick={() => status ? setLocation(`/leads?status=${status}`) : setLocation('/leads')}
+                >
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <Icon className={`h-3.5 w-3.5 ${color}`} />
+                      {isAdminExport && (value ?? 0) > 0 && (
+                        <div onClick={(e) => e.stopPropagation()}>
+                          {exportAll
+                            ? <ExportCSVButton size="icon" variant="ghost" label="" className="h-5 w-5" />
+                            : <ExportCSVButton status={status} size="icon" variant="ghost" label="" className="h-5 w-5" />
+                          }
+                        </div>
                       )}
                     </div>
-                    {isAdminExport && (metrics?.visitaRealizada || 0) > 0 && (
-                      <ExportCSVButton status="visita_realizada" size="icon" variant="ghost" label="" />
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Análise de Crédito</CardTitle>
-                  <FileCheck className="h-4 w-4 text-purple-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-2xl font-bold">{metrics?.analiseCredito || 0}</div>
-                      {(metrics?.total ?? 0) > 0 && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {(((metrics!.analiseCredito || 0) / metrics!.total) * 100).toFixed(1)}% do total
-                        </p>
-                      )}
-                    </div>
-                    {isAdminExport && (metrics?.analiseCredito || 0) > 0 && (
-                      <ExportCSVButton status="analise_credito" size="icon" variant="ghost" label="" />
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Contrato Fechado</CardTitle>
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-2xl font-bold">{metrics?.contratoFechado || 0}</div>
-                      {(metrics?.total ?? 0) > 0 && (
-                        <p className="text-xs text-green-600 dark:text-green-400 font-medium mt-0.5">
-                          {(((metrics!.contratoFechado || 0) / metrics!.total) * 100).toFixed(2)}% conversão
-                        </p>
-                      )}
-                    </div>
-                    {isAdminExport && (metrics?.contratoFechado || 0) > 0 && (
-                      <ExportCSVButton status="contrato_fechado" size="icon" variant="ghost" label="" />
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Perdidos</CardTitle>
-                  <XCircle className="h-4 w-4 text-red-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-2xl font-bold">{metrics?.perdido || 0}</div>
-                      {(metrics?.total ?? 0) > 0 && (
-                        <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">
-                          {(((metrics!.perdido || 0) / metrics!.total) * 100).toFixed(1)}% do total
-                        </p>
-                      )}
-                    </div>
-                    {isAdminExport && (metrics?.perdido || 0) > 0 && (
-                      <ExportCSVButton status="perdido" size="icon" variant="ghost" label="" />
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 border-green-200 dark:border-green-800">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">VGV (Valor Geral de Venda)</CardTitle>
-                  <DollarSign className="h-4 w-4 text-green-600" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-700 dark:text-green-300">
-                    {formatCurrency(metrics?.vgv || 0)}
-                  </div>
-                  {(metrics?.contratoFechado ?? 0) > 0 && (
-                    <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
-                      média {formatCurrency((metrics!.vgv || 0) / metrics!.contratoFechado)} / contrato
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Card de Distratos - visível quando houver distratos no período */}
-            {isAdmin && (metricasDistratos?.totalDistratos ?? 0) > 0 && (
-              <div className="mb-6">
-                <Card className="border-2 border-red-200 bg-gradient-to-br from-red-50 to-rose-50 dark:from-red-950 dark:to-rose-950 dark:border-red-800">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <div>
-                      <CardTitle className="text-sm font-semibold text-red-800 dark:text-red-300 flex items-center gap-2">
-                        <XCircle className="h-4 w-4" />
-                        Distratos no Período
-                      </CardTitle>
-                      <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
-                        Contratos cancelados — excluídos do VGV e das metas
+                    <p className={`text-xl font-bold tabular-nums ${highlight ? 'text-green-700 dark:text-green-300' : ''}`}>{value ?? 0}</p>
+                    <p className="text-[11px] text-muted-foreground leading-tight">{label}</p>
+                    {(metrics?.total ?? 0) > 0 && status && (
+                      <p className={`text-[10px] font-medium mt-0.5 ${highlight ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground/70'}`}>
+                        {(((value ?? 0) / metrics!.total) * 100).toFixed(1)}%
                       </p>
-                    </div>
-                    <Link href="/comissoes">
-                      <Button variant="ghost" size="sm" className="text-red-700 hover:text-red-800 hover:bg-red-100 text-xs h-7">
-                        Ver detalhes
-                      </Button>
-                    </Link>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-8">
-                      <div>
-                        <div className="text-3xl font-bold text-red-700 dark:text-red-300">
-                          {metricasDistratos?.totalDistratos || 0}
-                        </div>
-                        <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">contratos distratados</p>
-                      </div>
-                      <div className="h-10 w-px bg-red-200 dark:bg-red-700" />
-                      <div>
-                        <div className="text-3xl font-bold text-red-700 dark:text-red-300 line-through decoration-red-400">
-                          {formatCurrency(metricasDistratos?.vgvDistratado || 0)}
-                        </div>
-                        <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">VGV cancelado</p>
-                      </div>
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
-              </div>
-            )}
+              ))}
+            </div>
+
+            {/* Banner VGV — destaque para o número mais importante */}
+            <div className="grid gap-3 grid-cols-1 md:grid-cols-3 mb-6">
+              <Card className="md:col-span-2 bg-gradient-to-r from-emerald-600 to-green-700 text-white border-0">
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-emerald-100 text-xs font-medium uppercase tracking-wide">VGV do Período</p>
+                    <p className="text-3xl font-bold mt-0.5">{formatCurrency(metrics?.vgv || 0)}</p>
+                    {(metrics?.contratoFechado ?? 0) > 0 && (
+                      <p className="text-emerald-200 text-xs mt-1">
+                        {metrics!.contratoFechado} contrato{metrics!.contratoFechado > 1 ? 's' : ''} · ticket médio {formatCurrency((metrics!.vgv || 0) / metrics!.contratoFechado)}
+                      </p>
+                    )}
+                  </div>
+                  <DollarSign className="h-12 w-12 text-emerald-300/40" />
+                </CardContent>
+              </Card>
+              {/* Distratos — só aparece se houver */}
+              {isAdmin && (metricasDistratos?.totalDistratos ?? 0) > 0 ? (
+                <Card className="border-red-200 bg-red-50/60 dark:bg-red-950/20 dark:border-red-800">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs font-medium text-red-700 dark:text-red-400 uppercase tracking-wide">Distratos</p>
+                      <Link href="/comissoes">
+                        <ArrowRight className="h-3.5 w-3.5 text-red-400" />
+                      </Link>
+                    </div>
+                    <p className="text-2xl font-bold text-red-700 dark:text-red-300">{metricasDistratos!.totalDistratos}</p>
+                    <p className="text-xs text-red-500 dark:text-red-400 line-through mt-0.5">{formatCurrency(metricasDistratos!.vgvDistratado)}</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card className="border-dashed border-muted bg-transparent">
+                  <CardContent className="p-4 flex flex-col items-center justify-center h-full text-center">
+                    <CheckCircle className="h-6 w-6 text-green-400 mb-1" />
+                    <p className="text-xs text-muted-foreground">Sem distratos no período</p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
 
             {/* ================================================================ */}
             {/* MÉTRICAS POR FASE — POR CORRETOR                             */}
@@ -1211,62 +1073,6 @@ export default function Dashboard() {
                 </Card>
               )}
 
-              {/* 5 CorretorRankCards em grid responsivo */}
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-                <CorretorRankCard
-                  title="Leads"
-                  icon={Users}
-                  iconClass="text-blue-500"
-                  total={metrics?.total}
-                  items={leadsPorCorretor}
-                  getValue={(i) => i.totalLeads}
-                  getLabel={(i) => i.nome}
-                  isLoading={!metricasPorCorretor && loadStage >= 2}
-                />
-                <CorretorRankCard
-                  title="Agendamentos"
-                  icon={Calendar}
-                  iconClass="text-cyan-500"
-                  total={metrics?.agendado}
-                  items={agendamentosPorCorretor}
-                  getValue={(i) => i.agendados}
-                  getLabel={(i) => i.nome}
-                  isLoading={!metricasPorCorretor && loadStage >= 2}
-                />
-                <CorretorRankCard
-                  title="Visitas"
-                  icon={Eye}
-                  iconClass="text-orange-500"
-                  total={metrics?.visitaRealizada}
-                  items={visitasPorCorretor}
-                  getValue={(i) => i.visitas}
-                  getLabel={(i) => i.nome}
-                  isLoading={!metricasPorCorretor && loadStage >= 2}
-                />
-                <CorretorRankCard
-                  title="Análise de Crédito"
-                  icon={FileCheck}
-                  iconClass="text-purple-500"
-                  total={metrics?.analiseCredito}
-                  items={pastasPorCorretor}
-                  getValue={(i) => i.pastas}
-                  getLabel={(i) => i.nome}
-                  isLoading={!metricasPorCorretor && loadStage >= 2}
-                />
-                <CorretorRankCard
-                  title="Contratos / VGV"
-                  icon={Trophy}
-                  iconClass="text-green-500"
-                  total={metrics?.contratoFechado}
-                  items={vendasPorCorretor}
-                  getValue={(i) => i.vendas}
-                  getLabel={(i) => i.nome}
-                  isLoading={!metricasPorCorretor && loadStage >= 2}
-                  extraCol={(i) => i.vgv > 0 ? (
-                    <span className="text-xs text-green-600 dark:text-green-400 tabular-nums">{formatCurrency(i.vgv)}</span>
-                  ) : null}
-                />
-              </div>
             </div>
 
             {/* Tabela de Contratos Fechados */}
@@ -1523,6 +1329,20 @@ export default function Dashboard() {
                 }}
               />
             </div>
+
+            {/* Análise Detalhada — colapsável */}
+            <div className="mb-2 mt-4">
+              <button
+                className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full text-left py-2 border-b border-dashed"
+                onClick={() => setAnaliseExpandida(v => !v)}
+              >
+                <BarChart3 className="h-4 w-4" />
+                <span>Análise Detalhada</span>
+                <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4">{analiseExpandida ? 'ocultar' : 'expandir'}</Badge>
+                <span className="ml-auto text-xs text-muted-foreground/40">{analiseExpandida ? '▲' : '▼'}</span>
+              </button>
+            </div>
+            {analiseExpandida && <>
 
             {/* Card de Leads Urgentes */}
             {allLeads && allLeads.length > 0 && (
@@ -1961,6 +1781,7 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             </div>
+            </>}
           </>
         )}
       </div>
