@@ -775,59 +775,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Bloco: Visão Executiva — Hoje (CEO/gestor) */}
-        {isGestor && visaoHoje && (
-          <div className="mb-6">
-            <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
-              <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-sky-50 dark:from-blue-950 dark:to-sky-950 dark:border-blue-800">
-                <CardContent className="pt-4 pb-4">
-                  <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Leads recebidos hoje</p>
-                  <p className="text-2xl font-bold text-blue-800 dark:text-blue-200">{visaoHoje.leadsRecebidosHoje}</p>
-                </CardContent>
-              </Card>
-              <Card className={`${visaoHoje.percentualAtendimento != null && visaoHoje.percentualAtendimento < 70 ? 'border-red-200 bg-red-50/50 dark:bg-red-950/20' : 'border-green-200 bg-green-50/50 dark:bg-green-950/20'}`}>
-                <CardContent className="pt-4 pb-4">
-                  <p className="text-xs font-medium text-muted-foreground">Atendidos hoje</p>
-                  <p className="text-2xl font-bold">
-                    {visaoHoje.leadsAtendidosHoje}
-                    {visaoHoje.percentualAtendimento != null && (
-                      <span className={`text-sm font-semibold ml-1.5 ${visaoHoje.percentualAtendimento < 70 ? 'text-red-600' : 'text-green-600'}`}>
-                        ({visaoHoje.percentualAtendimento}%)
-                      </span>
-                    )}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card className={`${visaoHoje.tempoMedioPrimeiroContatoMin != null && visaoHoje.tempoMedioPrimeiroContatoMin > 5 ? 'border-orange-200 bg-orange-50/50 dark:bg-orange-950/20' : 'border-green-200 bg-green-50/50 dark:bg-green-950/20'}`}>
-                <CardContent className="pt-4 pb-4">
-                  <p className="text-xs font-medium text-muted-foreground">Tempo médio 1º contato</p>
-                  <p className="text-2xl font-bold">
-                    {visaoHoje.tempoMedioPrimeiroContatoMin != null ? (
-                      <>
-                        {visaoHoje.tempoMedioPrimeiroContatoMin} min
-                        <span className="text-xs font-normal text-muted-foreground ml-1.5">(meta 5)</span>
-                      </>
-                    ) : '—'}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950 dark:to-green-950 dark:border-emerald-800">
-                <CardContent className="pt-4 pb-4">
-                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">VGV do mês</p>
-                  <p className="text-xl font-bold text-emerald-800 dark:text-emerald-200">{formatCurrency(visaoHoje.vgvMes)}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4 pb-4">
-                  <p className="text-xs font-medium text-muted-foreground">Contratos no mês</p>
-                  <p className="text-2xl font-bold">{visaoHoje.contratosMes}</p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        )}
-
-        {/* Bloco: Situação Agora — alertas da equipe em tempo real */}
+        {/* ZONA 1 — Situação Agora: alertas críticos (exibidos primeiro) */}
         {alertasEquipe && (
           alertasEquipe.corretoresSemAtividade.length > 0 ||
           alertasEquipe.leadsSemPrimeiroContato.length > 0 ||
@@ -924,6 +872,58 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* ZONA 2 — Visão Executiva: KPIs principais do dia */}
+        {isGestor && visaoHoje && (
+          <div className="mb-6">
+            <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
+              <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-sky-50 dark:from-blue-950 dark:to-sky-950 dark:border-blue-800">
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Leads recebidos hoje</p>
+                  <p className="text-2xl font-bold text-blue-800 dark:text-blue-200">{visaoHoje.leadsRecebidosHoje}</p>
+                </CardContent>
+              </Card>
+              <Card className={`${visaoHoje.percentualAtendimento != null && visaoHoje.percentualAtendimento < 70 ? 'border-red-200 bg-red-50/50 dark:bg-red-950/20' : 'border-green-200 bg-green-50/50 dark:bg-green-950/20'}`}>
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs font-medium text-muted-foreground">Atendidos hoje</p>
+                  <p className="text-2xl font-bold">
+                    {visaoHoje.leadsAtendidosHoje}
+                    {visaoHoje.percentualAtendimento != null && (
+                      <span className={`text-sm font-semibold ml-1.5 ${visaoHoje.percentualAtendimento < 70 ? 'text-red-600' : 'text-green-600'}`}>
+                        ({visaoHoje.percentualAtendimento}%)
+                      </span>
+                    )}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className={`${visaoHoje.tempoMedioPrimeiroContatoMin != null && visaoHoje.tempoMedioPrimeiroContatoMin > 5 ? 'border-orange-200 bg-orange-50/50 dark:bg-orange-950/20' : 'border-green-200 bg-green-50/50 dark:bg-green-950/20'}`}>
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs font-medium text-muted-foreground">Tempo médio 1º contato</p>
+                  <p className="text-2xl font-bold">
+                    {visaoHoje.tempoMedioPrimeiroContatoMin != null ? (
+                      <>
+                        {visaoHoje.tempoMedioPrimeiroContatoMin} min
+                        <span className="text-xs font-normal text-muted-foreground ml-1.5">(meta 5)</span>
+                      </>
+                    ) : '—'}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950 dark:to-green-950 dark:border-emerald-800">
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">VGV do mês</p>
+                  <p className="text-xl font-bold text-emerald-800 dark:text-emerald-200">{formatCurrency(visaoHoje.vgvMes)}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs font-medium text-muted-foreground">Contratos no mês</p>
+                  <p className="text-2xl font-bold">{visaoHoje.contratosMes}</p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
         {metricsLoading ? (
           <div className="grid gap-3 grid-cols-4 md:grid-cols-8 mb-6">
             {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
@@ -1013,66 +1013,155 @@ export default function Dashboard() {
 
 
             {/* ================================================================ */}
-            {/* MÉTRICAS POR FASE — POR CORRETOR                             */}
+            {/* ZONA 4 — RADAR OPERACIONAL: Pipeline + Alertas do Time       */}
             {/* ================================================================ */}
             <div className="mb-8">
-              <div className="flex items-center gap-2 mb-4">
-                <Users className="h-5 w-5 text-primary" />
-                <h2 className="text-lg font-semibold">Métricas por Corretor</h2>
-                {!metricasPorCorretor && (
-                  <span className="text-xs text-muted-foreground">(carregando...)</span>
-                )}
+              <div className="grid gap-4 grid-cols-1 lg:grid-cols-5">
+
+                {/* Pipeline por Corretor (col 3/5) */}
+                <div className="lg:col-span-3">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Users className="h-5 w-5 text-primary" />
+                    <h2 className="text-base font-semibold">Pipeline por Corretor</h2>
+                    {!metricasPorCorretor && (
+                      <span className="text-xs text-muted-foreground">(carregando...)</span>
+                    )}
+                  </div>
+                  {pipelinePorCorretor.length > 0 ? (
+                    <Card className="overflow-hidden">
+                      <CardContent className="p-0">
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="pl-4 w-8">#</TableHead>
+                                <TableHead className="pl-2">Corretor</TableHead>
+                                <TableHead className="text-center text-blue-600 dark:text-blue-400">Leads</TableHead>
+                                <TableHead className="text-center text-cyan-600 dark:text-cyan-400">Agend.</TableHead>
+                                <TableHead className="text-center text-orange-600 dark:text-orange-400">Visitas</TableHead>
+                                <TableHead className="text-center text-purple-600 dark:text-purple-400">Análise</TableHead>
+                                <TableHead className="text-center text-green-700 dark:text-green-400">Contratos</TableHead>
+                                <TableHead className="text-right pr-4 text-green-700 dark:text-green-400">VGV</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {pipelinePorCorretor.map((row, index) => (
+                                <TableRow key={row.id} className={index < 3 ? 'bg-muted/30' : ''}>
+                                  <TableCell className="pl-4 font-bold text-muted-foreground text-xs w-8">{index + 1}</TableCell>
+                                  <TableCell className="font-medium pl-2 max-w-[160px] truncate">{row.nome}</TableCell>
+                                  <TableCell className="text-center tabular-nums">{row.leads || <span className="text-muted-foreground/40">—</span>}</TableCell>
+                                  <TableCell className="text-center tabular-nums">{row.agendamentos || <span className="text-muted-foreground/40">—</span>}</TableCell>
+                                  <TableCell className="text-center tabular-nums">{row.visitas || <span className="text-muted-foreground/40">—</span>}</TableCell>
+                                  <TableCell className="text-center tabular-nums">{row.analise || <span className="text-muted-foreground/40">—</span>}</TableCell>
+                                  <TableCell className="text-center tabular-nums font-semibold text-green-700 dark:text-green-400">
+                                    {row.contratos > 0 ? row.contratos : <span className="text-muted-foreground/40">—</span>}
+                                  </TableCell>
+                                  <TableCell className="text-right pr-4 tabular-nums text-green-700 dark:text-green-400 font-semibold">
+                                    {row.vgv > 0 ? formatCurrency(row.vgv) : <span className="text-muted-foreground/40">—</span>}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Card>
+                      <CardContent className="py-8 text-center text-muted-foreground text-sm">
+                        Sem dados de corretor no período
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+
+                {/* Alertas do Time (col 2/5) */}
+                <div className="lg:col-span-2">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-base font-semibold flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-orange-500" />
+                      Alertas do Time
+                    </h2>
+                    <Link href="/central-alertas">
+                      <button className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 hover:underline">
+                        Ver todos <ArrowRight className="h-3 w-3" />
+                      </button>
+                    </Link>
+                  </div>
+                  <Card className="h-full">
+                    <CardContent className="pt-4 space-y-3">
+                      {alertasEquipe ? (
+                        <>
+                          {alertasEquipe.corretoresSemAtividade.length > 0 && (
+                            <Link href="/minha-equipe">
+                              <div className="flex items-start gap-3 p-2.5 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900 cursor-pointer hover:shadow-sm transition-shadow">
+                                <UserX className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="text-xs font-semibold text-red-700 dark:text-red-400">{alertasEquipe.corretoresSemAtividade.length} sem atividade hoje</p>
+                                  <p className="text-[11px] text-red-600/70 dark:text-red-500/70 truncate">
+                                    {alertasEquipe.corretoresSemAtividade.slice(0, 3).map(c => c.nome).join(', ')}
+                                    {alertasEquipe.corretoresSemAtividade.length > 3 && ` +${alertasEquipe.corretoresSemAtividade.length - 3}`}
+                                  </p>
+                                </div>
+                              </div>
+                            </Link>
+                          )}
+                          {alertasEquipe.leadsSemPrimeiroContato.length > 0 && (
+                            <Link href="/leads">
+                              <div className="flex items-start gap-3 p-2.5 rounded-lg bg-orange-50 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900 cursor-pointer hover:shadow-sm transition-shadow">
+                                <Clock className="h-4 w-4 text-orange-500 mt-0.5 shrink-0" />
+                                <div>
+                                  <p className="text-xs font-semibold text-orange-700 dark:text-orange-400">{alertasEquipe.leadsSemPrimeiroContato.length} leads aguardando &gt;30min</p>
+                                  <p className="text-[11px] text-muted-foreground">Sem 1º contato</p>
+                                </div>
+                              </div>
+                            </Link>
+                          )}
+                          {alertasEquipe.followUpsVencidos.length > 0 && (
+                            <Link href="/monitoramento-followups">
+                              <div className="flex items-start gap-3 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900 cursor-pointer hover:shadow-sm transition-shadow">
+                                <Phone className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                                <div>
+                                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">{alertasEquipe.followUpsVencidos.length} follow-ups vencidos</p>
+                                  <p className="text-[11px] text-muted-foreground">Retorno pendente</p>
+                                </div>
+                              </div>
+                            </Link>
+                          )}
+                          {alertasEquipe.agendamentosSemConfirmacao.length > 0 && (
+                            <Link href="/agendamentos">
+                              <div className="flex items-start gap-3 p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900 cursor-pointer hover:shadow-sm transition-shadow">
+                                <Calendar className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
+                                <div>
+                                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-400">{alertasEquipe.agendamentosSemConfirmacao.length} agendamentos sem confirmar</p>
+                                  <p className="text-[11px] text-muted-foreground">Para amanhã</p>
+                                </div>
+                              </div>
+                            </Link>
+                          )}
+                          {alertasEquipe.corretoresSemAtividade.length === 0 &&
+                           alertasEquipe.leadsSemPrimeiroContato.length === 0 &&
+                           alertasEquipe.followUpsVencidos.length === 0 &&
+                           alertasEquipe.agendamentosSemConfirmacao.length === 0 && (
+                            <div className="flex flex-col items-center justify-center py-8 text-center">
+                              <CheckCircle className="h-8 w-8 text-green-400 mb-2" />
+                              <p className="text-sm text-muted-foreground">Tudo em ordem</p>
+                              <p className="text-xs text-muted-foreground/70">Sem alertas ativos</p>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="space-y-2">
+                          <Skeleton className="h-14 w-full rounded-lg" />
+                          <Skeleton className="h-14 w-full rounded-lg" />
+                          <Skeleton className="h-14 w-full rounded-lg" />
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
               </div>
-
-              {/* Pipeline por Corretor — tabela combinada (todas as fases) */}
-              {pipelinePorCorretor.length > 0 && (
-                <Card className="mb-4 overflow-hidden">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <BarChart3 className="h-4 w-4 text-primary" />
-                      Pipeline por Corretor — Visão de Fases
-                    </CardTitle>
-                    <CardDescription>Cada fase do funil por corretor no período selecionado</CardDescription>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="pl-4 w-8">#</TableHead>
-                            <TableHead className="pl-2">Corretor</TableHead>
-                            <TableHead className="text-center text-blue-600 dark:text-blue-400">Leads</TableHead>
-                            <TableHead className="text-center text-cyan-600 dark:text-cyan-400">Agend.</TableHead>
-                            <TableHead className="text-center text-orange-600 dark:text-orange-400">Visitas</TableHead>
-                            <TableHead className="text-center text-purple-600 dark:text-purple-400">Análise</TableHead>
-                            <TableHead className="text-center text-green-700 dark:text-green-400">Contratos</TableHead>
-                            <TableHead className="text-right pr-4 text-green-700 dark:text-green-400">VGV</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {pipelinePorCorretor.map((row, index) => (
-                            <TableRow key={row.id} className={index < 3 ? 'bg-muted/30' : ''}>
-                              <TableCell className="pl-4 font-bold text-muted-foreground text-xs w-8">{index + 1}</TableCell>
-                              <TableCell className="font-medium pl-2 max-w-[180px] truncate">{row.nome}</TableCell>
-                              <TableCell className="text-center tabular-nums">{row.leads || <span className="text-muted-foreground/40">—</span>}</TableCell>
-                              <TableCell className="text-center tabular-nums">{row.agendamentos || <span className="text-muted-foreground/40">—</span>}</TableCell>
-                              <TableCell className="text-center tabular-nums">{row.visitas || <span className="text-muted-foreground/40">—</span>}</TableCell>
-                              <TableCell className="text-center tabular-nums">{row.analise || <span className="text-muted-foreground/40">—</span>}</TableCell>
-                              <TableCell className="text-center tabular-nums font-semibold text-green-700 dark:text-green-400">
-                                {row.contratos > 0 ? row.contratos : <span className="text-muted-foreground/40">—</span>}
-                              </TableCell>
-                              <TableCell className="text-right pr-4 tabular-nums text-green-700 dark:text-green-400 font-semibold">
-                                {row.vgv > 0 ? formatCurrency(row.vgv) : <span className="text-muted-foreground/40">—</span>}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
             </div>
 
             {/* Tabela de Contratos Fechados */}
@@ -1212,8 +1301,22 @@ export default function Dashboard() {
               </Card>
             </div>
 
-            {/* Tabela de VGV por Equipe e Projeto */}
-            <div className="mb-8">
+            {/* Análise Detalhada — colapsável */}
+            <div className="mb-2 mt-4">
+              <button
+                className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full text-left py-2 border-b border-dashed"
+                onClick={() => setAnaliseExpandida(v => !v)}
+              >
+                <BarChart3 className="h-4 w-4" />
+                <span>Análise Detalhada</span>
+                <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4">{analiseExpandida ? 'ocultar' : 'expandir'}</Badge>
+                <span className="ml-auto text-xs text-muted-foreground/40">{analiseExpandida ? '▲' : '▼'}</span>
+              </button>
+            </div>
+            {analiseExpandida && <>
+
+            {/* VGV por Equipe de Vendas */}
+            <div className="mb-8 mt-6">
               <Card>
                 <CardHeader>
                   <div className="flex items-start justify-between">
@@ -1244,16 +1347,10 @@ export default function Dashboard() {
                           <TableBody>
                             {vgvPorEquipeProjeto.map((item, index) => (
                               <TableRow key={`${item.equipe}-${index}`} className={index % 2 === 0 ? 'bg-muted/20' : ''}>
-                                <TableCell>
-                                  <span className="font-medium text-sm">{item.equipe}</span>
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  <Badge variant="secondary">{item.contratos}</Badge>
-                                </TableCell>
+                                <TableCell><span className="font-medium text-sm">{item.equipe}</span></TableCell>
+                                <TableCell className="text-center"><Badge variant="secondary">{item.contratos}</Badge></TableCell>
                                 <TableCell className="text-right">
-                                  <span className="font-semibold text-green-600 dark:text-green-400">
-                                    {formatCurrency(item.vgv)}
-                                  </span>
+                                  <span className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(item.vgv)}</span>
                                 </TableCell>
                               </TableRow>
                             ))}
@@ -1271,14 +1368,13 @@ export default function Dashboard() {
               </Card>
             </div>
 
-            {/* Gráficos */}
+            {/* Gráficos históricos */}
             <div className="grid gap-4 md:grid-cols-2 mb-8">
-              {/* Gráfico de Evolução de Leads */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <TrendingUp className="h-5 w-5" />
-                    Evolução de Leads (30 dias)
+                    Evolução de Leads (14 dias)
                   </CardTitle>
                   <CardDescription>Quantidade de leads criados por dia</CardDescription>
                 </CardHeader>
@@ -1287,23 +1383,11 @@ export default function Dashboard() {
                     <ResponsiveContainer width="100%" height={250}>
                       <LineChart data={metricasHistoricas}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis 
-                          dataKey="data" 
-                          tickFormatter={formatDateShort}
-                          fontSize={12}
-                        />
+                        <XAxis dataKey="data" tickFormatter={formatDateShort} fontSize={12} />
                         <YAxis fontSize={12} />
-                        <Tooltip 
-                          labelFormatter={(label) => format(parseISO(label), "dd/MM/yyyy", { locale: ptBR })}
-                        />
+                        <Tooltip labelFormatter={(label) => format(parseISO(label), "dd/MM/yyyy", { locale: ptBR })} />
                         <Legend />
-                        <Line 
-                          type="monotone" 
-                          dataKey="total" 
-                          stroke="#3b82f6" 
-                          name="Total"
-                          strokeWidth={2}
-                        />
+                        <Line type="monotone" dataKey="total" stroke="#3b82f6" name="Total" strokeWidth={2} />
                       </LineChart>
                     </ResponsiveContainer>
                   ) : (
@@ -1314,8 +1398,6 @@ export default function Dashboard() {
                   )}
                 </CardContent>
               </Card>
-
-              {/* Funil de Vendas Visual */}
               <FunilVendasVisual
                 data={{
                   novos: metrics?.novos || 0,
@@ -1329,20 +1411,6 @@ export default function Dashboard() {
                 }}
               />
             </div>
-
-            {/* Análise Detalhada — colapsável */}
-            <div className="mb-2 mt-4">
-              <button
-                className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full text-left py-2 border-b border-dashed"
-                onClick={() => setAnaliseExpandida(v => !v)}
-              >
-                <BarChart3 className="h-4 w-4" />
-                <span>Análise Detalhada</span>
-                <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4">{analiseExpandida ? 'ocultar' : 'expandir'}</Badge>
-                <span className="ml-auto text-xs text-muted-foreground/40">{analiseExpandida ? '▲' : '▼'}</span>
-              </button>
-            </div>
-            {analiseExpandida && <>
 
             {/* Card de Leads Urgentes */}
             {allLeads && allLeads.length > 0 && (
