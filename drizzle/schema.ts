@@ -2699,3 +2699,74 @@ export const acessosLinksUteis = mysqlTable("acessos_links_uteis", {
 }));
 export type AcessoLinkUtil = typeof acessosLinksUteis.$inferSelect;
 export type InsertAcessoLinkUtil = typeof acessosLinksUteis.$inferInsert;
+
+// ============================================================================
+// TABELAS DO AGENTE MULTIAGENTES (orquestrador agente-smq)
+// Persistencia durável de conversas, decisoes/telemetria e notas de qualidade.
+// Liga a conversa do agente ao lead do CRM (ligacao conversa -> desfecho).
+// ============================================================================
+
+/** Conversa conduzida pelo agente no WhatsApp (1 por lead/telefone). */
+export const agentConversations = mysqlTable("agent_conversations", {
+  id: int("id").autoincrement().primaryKey(),
+  conversationId: varchar("conversationId", { length: 80 }).notNull().unique(),
+  phoneHash: varchar("phoneHash", { length: 40 }), // telefone pseudonimizado (LGPD)
+  leadId: int("leadId"), // ligacao com leads.id (desfecho)
+  estagio: varchar("estagio", { length: 40 }),
+  temperatura: varchar("temperatura", { length: 16 }),
+  handoff: boolean("handoff").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  convIdx: index("agent_conv_convid_idx").on(table.conversationId),
+  leadIdx: index("agent_conv_lead_idx").on(table.leadId),
+  phoneIdx: index("agent_conv_phone_idx").on(table.phoneHash),
+}));
+export type AgentConversation = typeof agentConversations.$inferSelect;
+export type InsertAgentConversation = typeof agentConversations.$inferInsert;
+
+/** Turnos da conversa do agente. */
+export const agentMessages = mysqlTable("agent_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  conversationId: varchar("conversationId", { length: 80 }).notNull(),
+  role: mysqlEnum("role", ["user", "assistant", "system"]).notNull(),
+  content: text("content"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  convIdx: index("agent_msg_conv_idx").on(table.conversationId, table.createdAt),
+}));
+export type AgentMessage = typeof agentMessages.$inferSelect;
+export type InsertAgentMessage = typeof agentMessages.$inferInsert;
+
+/** Eventos estruturados / decisoes dos agentes (telemetria, KPIs). Sem PII. */
+export const agentEvents = mysqlTable("agent_events", {
+  id: int("id").autoincrement().primaryKey(),
+  conversationId: varchar("conversationId", { length: 80 }),
+  phoneHash: varchar("phoneHash", { length: 40 }),
+  agent: varchar("agent", { length: 40 }).notNull(),
+  type: varchar("type", { length: 40 }).notNull(),
+  kpi: varchar("kpi", { length: 40 }),
+  value: decimal("value", { precision: 12, scale: 3 }),
+  meta: json("meta"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  agentIdx: index("agent_events_agent_idx").on(table.agent),
+  convIdx: index("agent_events_conv_idx").on(table.conversationId),
+  dataIdx: index("agent_events_data_idx").on(table.createdAt),
+}));
+export type AgentEvent = typeof agentEvents.$inferSelect;
+export type InsertAgentEvent = typeof agentEvents.$inferInsert;
+
+/** Notas de qualidade (0-100) por conversa, do Agente de Qualidade. */
+export const agentEvalScores = mysqlTable("agent_eval_scores", {
+  id: int("id").autoincrement().primaryKey(),
+  conversationId: varchar("conversationId", { length: 80 }).notNull(),
+  score: int("score").notNull(),
+  breakdown: json("breakdown"),
+  sugestoes: json("sugestoes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  convIdx: index("agent_eval_conv_idx").on(table.conversationId),
+}));
+export type AgentEvalScore = typeof agentEvalScores.$inferSelect;
+export type InsertAgentEvalScore = typeof agentEvalScores.$inferInsert;

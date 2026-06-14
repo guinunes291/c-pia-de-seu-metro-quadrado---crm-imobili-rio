@@ -9,6 +9,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import webhookRoutes from "../webhookRoutes";
 import uploadRoutes from "../uploadRoutes";
+import agentRoutes from "../agentRoutes";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { sdk } from "./sdk";
@@ -67,7 +68,10 @@ async function startServer() {
   
   // Webhook routes (público, com rate limiting de 10 req/min por token)
   app.use('/api/webhook', webhookRateLimit, webhookRoutes);
-  
+
+  // Agent routes (ingestao do orquestrador multiagentes; auth por AGENT_API_TOKEN)
+  app.use('/api/agent', webhookRateLimit, agentRoutes);
+
   // Upload routes (requer autenticação via cookie)
   app.use('/api', uploadRoutes);
 
