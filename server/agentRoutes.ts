@@ -52,6 +52,7 @@ router.post('/conversation', async (req: Request, res: Response) => {
     const { conversationId, phoneHash, leadId, estagio, temperatura, handoff, messages } = req.body || {};
     if (!conversationId) return res.status(400).json({ success: false, error: 'conversationId obrigatorio' });
     const db = await getDb();
+    if (!db) return res.status(503).json({ success: false, error: 'banco indisponivel' });
 
     await db
       .insert(agentConversations)
@@ -81,6 +82,7 @@ router.post('/events', async (req: Request, res: Response) => {
     const eventos = Array.isArray(req.body?.events) ? req.body.events : [];
     if (!eventos.length) return res.json({ success: true, inserted: 0 });
     const db = await getDb();
+    if (!db) return res.status(503).json({ success: false, error: 'banco indisponivel' });
     await db.insert(agentEvents).values(
       eventos
         .filter((e: any) => e && e.agent && e.type)
@@ -112,6 +114,7 @@ router.post('/eval', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'conversationId e score obrigatorios' });
     }
     const db = await getDb();
+    if (!db) return res.status(503).json({ success: false, error: 'banco indisponivel' });
     await db.insert(agentEvalScores).values({ conversationId, score, breakdown, sugestoes });
     res.json({ success: true });
   } catch (e: any) {
@@ -130,6 +133,7 @@ router.get('/outcome', async (req: Request, res: Response) => {
     const telefone = (req.query.telefone as string) || null;
     if (!leadId && !telefone) return res.status(400).json({ success: false, error: 'leadId ou telefone obrigatorio' });
     const db = await getDb();
+    if (!db) return res.status(503).json({ success: false, error: 'banco indisponivel' });
 
     const row = leadId
       ? (await db.select().from(leads).where(eq(leads.id, leadId)).limit(1))[0]
@@ -141,7 +145,7 @@ router.get('/outcome', async (req: Request, res: Response) => {
       await db.select({ id: visitas.id }).from(visitas).where(eq(visitas.leadId, row.id)).limit(1)
     )[0];
     const contrato = (
-      await db.select({ id: contratos.id, status: contratos.status }).from(contratos).where(eq(contratos.leadId, row.id)).limit(1)
+      await db.select({ id: contratos.id, distrato: contratos.distrato }).from(contratos).where(eq(contratos.leadId, row.id)).limit(1)
     )[0];
 
     res.json({
@@ -152,7 +156,7 @@ router.get('/outcome', async (req: Request, res: Response) => {
       temperatura: (row as any).temperatura ?? null,
       visitou: !!visita,
       temContrato: !!contrato,
-      contratoStatus: contrato?.status ?? null,
+      contratoDistratado: contrato ? !!contrato.distrato : null,
     });
   } catch (e: any) {
     console.error('[agent/outcome] erro:', e.message);
